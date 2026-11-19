@@ -59,6 +59,38 @@ export default function App() {
     return () => window.clearInterval(timer)
   }, [tickFocus, finishFocus])
 
+  // 系统托盘 / 全局快捷键动作
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api?.onAppAction) return
+    const off = api.onAppAction(async (action) => {
+      const s = useStore.getState()
+      if (action === 'goto-settings') { setTab('settings'); return }
+      if (action === 'start-focus') {
+        if (s.focus) { setToast('已有进行中的专注'); setTab('focus'); return }
+        const { getSetting } = await import('./db/database')
+        const presets = await getSetting<number[]>('focusPresets', [25, 50, 90])
+        await s.startFocus(presets[0] || 25)
+        setTab('focus')
+        setToast('已从快捷键开始专注')
+      } else if (action === 'finish-focus' || action === 'toggle-focus') {
+        if (s.focus) {
+          const sec = await s.finishFocus('aborted')
+          if (sec !== undefined) setToast('专注已结束并记录')
+        } else if (action === 'toggle-focus') {
+          const { getSetting } = await import('./db/database')
+          const presets = await getSetting<number[]>('focusPresets', [25, 50, 90])
+          await s.startFocus(presets[0] || 25)
+          setTab('focus')
+          setToast('已从快捷键开始专注')
+        } else {
+          setToast('当前没有进行中的专注')
+        }
+      }
+    })
+    return off
+  }, [])
+
   useEffect(() => {
     if (!toast) return
     const t = window.setTimeout(() => setToast(''), 3000)

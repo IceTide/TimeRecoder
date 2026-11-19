@@ -1,12 +1,15 @@
-import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification, shell, Tray, Menu, globalShortcut, nativeImage } from 'electron'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { makeTrayIconDataURL } from './tray-icon'
 
 const execFileAsync = promisify(execFile)
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false // 区分「关闭窗口」与「真正退出」
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -36,20 +39,90 @@ function createWindow() {
     })
   }
 
+  // 关闭按钮隐藏到托盘（后台继续做自动追踪），真正退出走托盘菜单
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      mainWindow?.hide()
+    }
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 }
 
+/** 显示并聚焦主窗口 */
+function showWindow() {
+  if (!mainWindow) createWindow()
+  else {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
+
+/** 切换主窗口显示/隐藏 */
+function toggleWindow() {
+  if (!mainWindow) { createWindow(); return }
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide()
+  else showWindow()
+}
+
+/** 向渲染进程发送托盘/快捷键动作 */
+function sendToRenderer(action: string) {
+  mainWindow?.webContents.send('app-action', action)
+}
+
+/** 构建系统托盘及其右键菜单 */
+function createTray() {
+  if (tray) return
+  // 图标由代码生成的合法 PNG data URL 加载（已验证签名/尺寸正确）
+  const icon = nativeImage.createFromDataURL(makeTrayIconDataURL(32))
+  tray = new Tray(icon)
+  tray.setToolTip('TimeRecoder · 专注记录时间')
+
+  const menu = Menu.buildFromTemplate([
+    { label: '显示 / 隐藏窗口', click: toggleWindow },
+    { type: 'separator' },
+    { label: '开始专注（30 分钟）', click: () => sendToRenderer('start-focus') },
+    { label: '结束当前专注', click: () => sendToRenderer('finish-focus') },
+    { type: 'separator' },
+    { label: '打开设置', click: () => { showWindow(); sendToRenderer('goto-settings') } },
+    { type: 'separator' },
+    {
+      label: '退出 TimeRecoder',
+      click: () => { isQuitting = true; app.quit() },
+    },
+  ])
+  tray.setContextMenu(menu)
+  tray.on('click', toggleWindow) // 左键点击切换窗口
+}
+
+/** 注册全局快捷键（失焦时也可用） */
+function registerShortcuts() {
+  // 专注开关：Ctrl/Cmd + Shift + F
+  globalShortcut.register('CommandOrControl+Shift+F', () => sendToRenderer('toggle-focus'))
+  // 显示/隐藏窗口：Ctrl/Cmd + Shift + D
+  globalShortcut.register('CommandOrControl+Shift+D', () => toggleWindow())
+}
+
 app.whenReady().then(() => {
   createWindow()
+  createTray()
+  registerShortcuts()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) showWindow()
   })
 })
 
+app.on('before-quit', () => { isQuitting = true })
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // 有托盘时常驻后台，不因窗口关闭而退出
+  if (!tray && process.platform !== 'darwin') app.quit()
 })
 
 // 允许渲染进程打开外部链接（系统默认浏览器）
@@ -87,9 +160,10 @@ const ACTIVE_WINDOW_PS = `
   $sb = New-Object System.Text.StringBuilder 512
   [Win32]::GetWindowText($w, $sb, 512) | Out-Null
   $title = $sb.ToString()
-  $json = @{ app = $appName; title = $title } | ConvertTo-Json -Compress
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  Write-Output $json
+  $json = @{ app = $appName; title = $title } | ConvertTo-Json -Compress -Depth 3
+  # 用 Base64 传输，规避 Windows 控制台代码页导致的中文乱码
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+  Write-Output ([System.Convert]::ToBase64String($bytes))
 `
 
 interface ActiveWindowInfo { app: string; title: string }
@@ -100,10 +174,12 @@ async function readActiveWindow(): Promise<ActiveWindowInfo> {
     const { stdout } = await execFileAsync(
       'powershell',
       ['-NoProfile', '-NonInteractive', '-Command', ACTIVE_WINDOW_PS],
-      { encoding: 'utf8', timeout: 3000, windowsHide: true },
+      { encoding: 'ascii', timeout: 3000, windowsHide: true },
     )
-    const line = stdout.trim().split('\n').find((l) => l.trim().startsWith('{')) || '{}'
-    const parsed = JSON.parse(line) as Partial<ActiveWindowInfo>
+    // 输出为单行 Base64（UTF-8 JSON），解码后再解析，避免中文乱码
+    const b64 = stdout.replace(/\s+/g, '')
+    const json = Buffer.from(b64, 'base64').toString('utf8')
+    const parsed = JSON.parse(json) as Partial<ActiveWindowInfo>
     return { app: String(parsed.app ?? ''), title: String(parsed.title ?? '') }
   } catch {
     return { app: '', title: '' }

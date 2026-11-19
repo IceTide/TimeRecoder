@@ -51,10 +51,19 @@ export interface AutoSegment {
   startAt: number
 }
 
+const AUTO_MAX_AGE_MS = 5 * 60 * 1000 // 自动段超过 5 分钟视为陈旧残留
+
 function loadPersistedAuto(): AutoSegment | null {
   try {
     const raw = localStorage.getItem(AUTO_KEY)
-    return raw ? (JSON.parse(raw) as AutoSegment) : null
+    if (!raw) return null
+    const seg = JSON.parse(raw) as AutoSegment
+    // 隔夜关闭/崩溃残留的旧段不能恢复，否则下次采样会延续出跨越数小时的错误记录
+    if (!seg || !seg.startAt || Date.now() - seg.startAt > AUTO_MAX_AGE_MS) {
+      savePersistedAuto(null)
+      return null
+    }
+    return seg
   } catch {
     return null
   }

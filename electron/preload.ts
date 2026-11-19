@@ -8,6 +8,12 @@ const api = {
   isDev: () => ipcRenderer.invoke('is-dev'),
   activeWindowTitle: () => ipcRenderer.invoke('active-window-title'),
   activeWindowInfo: () => ipcRenderer.invoke('active-window-info'),
+  /** 监听托盘/全局快捷键动作，返回取消监听函数 */
+  onAppAction: (handler: (action: string) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, action: string) => handler(action)
+    ipcRenderer.on('app-action', listener)
+    return () => ipcRenderer.removeListener('app-action', listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)
