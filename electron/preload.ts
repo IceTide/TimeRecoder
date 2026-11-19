@@ -7,6 +7,7 @@ const api = {
   getVersion: () => ipcRenderer.invoke('app-version'),
   isDev: () => ipcRenderer.invoke('is-dev'),
   activeWindowTitle: () => ipcRenderer.invoke('active-window-title'),
+  activeWindowInfo: () => ipcRenderer.invoke('active-window-info'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

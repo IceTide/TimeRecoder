@@ -21,9 +21,24 @@ export default function App() {
   const [projModal, setProjModal] = useState(false)
   const [projName, setProjName] = useState('')
   const [projColor, setProjColor] = useState(COLORS[0])
-  const { loadAll, loaded, projects, addProject, focus, tickFocus, finishFocus } = useStore()
+  const { loadAll, loaded, projects, addProject, focus, tickFocus, finishFocus,
+    autoEnabled, autoIntervalSec, autoCurrent, pollAuto, flushAuto } = useStore()
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // 自动追踪：按设定间隔采集活动窗口；关闭/卸载时结算当前段
+  useEffect(() => {
+    if (!autoEnabled) return
+    const timer = window.setInterval(() => { void pollAuto() }, autoIntervalSec * 1000)
+    void pollAuto() // 开启后立即采一次
+    return () => window.clearInterval(timer)
+  }, [autoEnabled, autoIntervalSec, pollAuto])
+
+  useEffect(() => {
+    const onLeave = () => { void flushAuto() }
+    window.addEventListener('beforeunload', onLeave)
+    return () => window.removeEventListener('beforeunload', onLeave)
+  }, [flushAuto])
 
   // 全局每秒推进专注计时；到点自动完成并提醒
   useEffect(() => {
@@ -112,6 +127,12 @@ export default function App() {
               <span>把时间花在重要的事上</span>
             </div>
             <div className="topbar-right">
+              {autoEnabled && !focus && (
+                <button className="auto-pill" onClick={() => setTab('settings')} title="自动追踪进行中，点击设置查看">
+                  <span className={`auto-dot ${autoCurrent ? 'live' : ''}`} />
+                  自动追踪{autoCurrent ? ` · ${autoCurrent.app}` : '中'}
+                </button>
+              )}
               {focus && (
                 <button className="running-pill" onClick={() => setTab('focus')}>
                   <span className="pulse" /> 专注中 · {Math.floor(focus.elapsedSec / 60)} 分钟

@@ -1,5 +1,9 @@
 import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
 import * as path from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
@@ -63,34 +67,54 @@ ipcMain.handle('notify', (_e, payload: { title: string; body: string }) => {
 
 ipcMain.handle('app-version', () => app.getVersion())
 
-// Phase 2 预留：读取本机活动窗口标题，用于自动时间追踪
-ipcMain.handle('active-window-title', async () => {
-  if (process.platform !== 'win32') return ''
+// Phase 2：读取本机活动窗口信息（进程名 + 标题），用于自动时间追踪
+const ACTIVE_WINDOW_PS = `
+  Add-Type @"
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Text;
+    public class Win32 {
+      [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+      [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+      [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    }
+  "@
+  $w = [Win32]::GetForegroundWindow()
+  $procId = [uint32]0
+  [Win32]::GetWindowThreadProcessId($w, [ref]$procId) | Out-Null
+  $appName = ''
+  try { $appName = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
+  $sb = New-Object System.Text.StringBuilder 512
+  [Win32]::GetWindowText($w, $sb, 512) | Out-Null
+  $title = $sb.ToString()
+  $json = @{ app = $appName; title = $title } | ConvertTo-Json -Compress
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $json
+`
+
+interface ActiveWindowInfo { app: string; title: string }
+
+async function readActiveWindow(): Promise<ActiveWindowInfo> {
+  if (process.platform !== 'win32') return { app: '', title: '' }
   try {
-    const { execFileSync } = await import('child_process')
-    const ps = `
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        using System.Text;
-        public class Win32 {
-          [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-          [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-        }
-      "@
-      $w = [Win32]::GetForegroundWindow()
-      $sb = New-Object System.Text.StringBuilder 512
-      [Win32]::GetWindowText($w, $sb, 512) | Out-Null
-      $sb.ToString()
-    `
-    return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
-      encoding: 'utf8',
-      timeout: 3000,
-    }).trim()
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', ACTIVE_WINDOW_PS],
+      { encoding: 'utf8', timeout: 3000, windowsHide: true },
+    )
+    const line = stdout.trim().split('\n').find((l) => l.trim().startsWith('{')) || '{}'
+    const parsed = JSON.parse(line) as Partial<ActiveWindowInfo>
+    return { app: String(parsed.app ?? ''), title: String(parsed.title ?? '') }
   } catch {
-    return ''
+    return { app: '', title: '' }
   }
-})
+}
+
+// 返回结构化 JSON 字符串（渲染进程侧解析），避免依赖 IPC 结构化克隆的类型丢失
+ipcMain.handle('active-window-info', async () => JSON.stringify(await readActiveWindow()))
+
+// 兼容旧接口：仅返回标题
+ipcMain.handle('active-window-title', async () => (await readActiveWindow()).title)
 
 // 供渲染进程判断是否 packaged
 ipcMain.handle('is-dev', () => isDev)

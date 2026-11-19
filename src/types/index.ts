@@ -71,6 +71,18 @@ export interface FocusDurations {
   breakReminderMin: number
 }
 
+/** 自动追踪：把活动窗口归类到时间类别的一条关键词规则 */
+export interface ClassifyRule {
+  id: string
+  /** 匹配关键词（小写包含匹配） */
+  keyword: string
+  /** 命中后归入的类别 */
+  category: TimeCategory
+  enabled: boolean
+  /** 匹配范围：app=仅进程名 / title=仅窗口标题 / both=两者（默认 both） */
+  scope?: 'app' | 'title' | 'both'
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -79,6 +91,7 @@ declare global {
       getVersion: () => Promise<string>
       isDev: () => Promise<boolean>
       activeWindowTitle: () => Promise<string>
+      activeWindowInfo: () => Promise<string>
     }
   }
 }

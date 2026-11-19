@@ -1,17 +1,23 @@
 import { create } from 'zustand'
 import * as repo from '../db/database'
+import { classifyWindow, DEFAULT_AUTO_RULES } from '../utils/classify'
 import type {
   CalendarEvent,
+  ClassifyRule,
   FocusSession,
   Project,
   Task,
+  TimeCategory,
   TimeEntry,
 } from '../types'
 
 const FOCUS_KEY = 'timerecoder.focus'
+const AUTO_KEY = 'timerecoder.auto'
 
 // 防止 1 秒 tick 在异步 finishFocus 完成前重复触发，造成重复记账/重复通知
 let finishing = false
+// 自动追踪轮询串行化，避免上一次 IPC 未返回时再次结算造成重复段
+let autoPolling = false
 
 interface PersistedFocus {
   sessionId: number
@@ -37,6 +43,28 @@ function savePersistedFocus(f: PersistedFocus | null) {
   else localStorage.removeItem(FOCUS_KEY)
 }
 
+/** 自动追踪的当前段（应用/标题/类别/起始时间） */
+export interface AutoSegment {
+  app: string
+  title: string
+  category: TimeCategory
+  startAt: number
+}
+
+function loadPersistedAuto(): AutoSegment | null {
+  try {
+    const raw = localStorage.getItem(AUTO_KEY)
+    return raw ? (JSON.parse(raw) as AutoSegment) : null
+  } catch {
+    return null
+  }
+}
+
+function savePersistedAuto(s: AutoSegment | null) {
+  if (s) localStorage.setItem(AUTO_KEY, JSON.stringify(s))
+  else localStorage.removeItem(AUTO_KEY)
+}
+
 export interface FocusState {
   sessionId: number
   taskId?: number
@@ -57,6 +85,13 @@ interface State {
   focus: FocusState | null
   loaded: boolean
 
+  // 自动追踪
+  autoEnabled: boolean
+  autoIntervalSec: number
+  autoMinSec: number
+  autoRules: ClassifyRule[]
+  autoCurrent: AutoSegment | null
+
   loadAll: () => Promise<void>
   addProject: (p: Project) => Promise<number>
   updateProject: (id: number, c: Partial<Project>) => Promise<void>
@@ -76,6 +111,15 @@ interface State {
   resumeFocus: () => void
   finishFocus: (status: 'completed' | 'aborted') => Promise<number | undefined>
   tickFocus: () => void
+
+  setAutoEnabled: (enabled: boolean) => Promise<void>
+  setAutoIntervalSec: (sec: number) => Promise<void>
+  setAutoMinSec: (sec: number) => Promise<void>
+  setAutoRules: (rules: ClassifyRule[]) => Promise<void>
+  /** 采集一次活动窗口并推进自动记账状态机 */
+  pollAuto: () => Promise<void>
+  /** 结算当前段（切走 / 锁屏 / 关闭追踪时调用） */
+  flushAuto: () => Promise<void>
 }
 
 function toFocusState(p: PersistedFocus): FocusState {
@@ -91,10 +135,19 @@ export const useStore = create<State>((set, get) => ({
   events: [],
   focus: null,
   loaded: false,
+  autoEnabled: false,
+  autoIntervalSec: 60,
+  autoMinSec: 60,
+  autoRules: DEFAULT_AUTO_RULES,
+  autoCurrent: null,
 
   loadAll: async () => {
-    const [projects, tasks, entries, sessions, events] = await Promise.all([
+    const [projects, tasks, entries, sessions, events, autoEnabled, autoIntervalSec, autoMinSec, autoRules] = await Promise.all([
       repo.getProjects(), repo.getTasks(), repo.getEntries(), repo.getSessions(), repo.getEvents(),
+      repo.getSetting<boolean>('autoEnabled', false),
+      repo.getSetting<number>('autoIntervalSec', 60),
+      repo.getSetting<number>('autoMinSec', 60),
+      repo.getSetting<ClassifyRule[]>('autoRules', DEFAULT_AUTO_RULES),
     ])
     const pf = loadPersistedFocus()
     // 会话若已被删除则丢弃残留状态
@@ -102,6 +155,9 @@ export const useStore = create<State>((set, get) => ({
     set({
       projects, tasks, entries, sessions, events,
       focus: valid ? toFocusState(pf!) : null,
+      autoEnabled, autoIntervalSec, autoMinSec,
+      autoRules: Array.isArray(autoRules) && autoRules.length ? autoRules : DEFAULT_AUTO_RULES,
+      autoCurrent: loadPersistedAuto(),
       loaded: true,
     })
   },
@@ -140,6 +196,8 @@ export const useStore = create<State>((set, get) => ({
 
   startFocus: async (plannedMin, taskId) => {
     if (get().focus) return
+    // 开始专注前先结算自动段，避免与专注计时重复记账
+    if (get().autoCurrent) await get().flushAuto()
     const now = Date.now()
     const id = await repo.addSession({
       taskId, plannedMin, startAt: now, pauseCount: 0, status: 'running',
@@ -227,5 +285,111 @@ export const useStore = create<State>((set, get) => ({
     if (!f || f.segmentStartAt === null) return
     const elapsedSec = f.accumulatedSec + (Date.now() - f.segmentStartAt) / 1000
     set({ focus: { ...f, elapsedSec } })
+  },
+
+  setAutoEnabled: async (enabled) => {
+    await repo.setSetting('autoEnabled', enabled)
+    set({ autoEnabled: enabled })
+    // 关闭时结算当前段，避免最后一段时间丢失
+    if (!enabled) await get().flushAuto()
+  },
+  setAutoIntervalSec: async (sec) => {
+    const v = Math.min(600, Math.max(10, Math.round(sec)))
+    await repo.setSetting('autoIntervalSec', v)
+    set({ autoIntervalSec: v })
+  },
+  setAutoMinSec: async (sec) => {
+    const v = Math.min(600, Math.max(10, Math.round(sec)))
+    await repo.setSetting('autoMinSec', v)
+    set({ autoMinSec: v })
+  },
+  setAutoRules: async (rules) => {
+    await repo.setSetting('autoRules', rules)
+    set({ autoRules: rules })
+    // 规则变更后结算当前段，下个采样周期按新规则重新归类
+    if (get().autoCurrent) await get().flushAuto()
+  },
+
+  flushAuto: async () => {
+    const seg = get().autoCurrent
+    if (!seg) return
+    // 先同步清空当前段，避免并发重复结算
+    savePersistedAuto(null)
+    set({ autoCurrent: null })
+    const endAt = Date.now()
+    const durationSec = Math.round((endAt - seg.startAt) / 1000)
+    if (durationSec >= get().autoMinSec) {
+      await repo.addEntry({
+        category: seg.category,
+        startAt: seg.startAt,
+        endAt,
+        durationSec,
+        source: 'auto',
+        note: `${seg.app} · ${seg.title}`.slice(0, 120),
+        createdAt: endAt,
+      })
+      set({ entries: await repo.getEntries() })
+    }
+  },
+
+  pollAuto: async () => {
+    if (autoPolling || !get().autoEnabled) return
+    autoPolling = true
+    try {
+      const state = get()
+
+      // 专注进行中：暂停自动记账，避免与专注时间重复；同时结算已开启的自动段
+      if (state.focus) {
+        if (state.autoCurrent) await get().flushAuto()
+        return
+      }
+
+      let info: { app: string; title: string } = { app: '', title: '' }
+      try {
+        const raw = await window.electronAPI?.activeWindowInfo?.()
+        if (raw) info = JSON.parse(raw) as { app: string; title: string }
+      } catch {
+        info = { app: '', title: '' }
+      }
+      // IPC 等待期间状态可能已变化：关闭追踪 / 进入专注则结算当前段后退出
+      const after = get()
+      if (!after.autoEnabled || after.focus) {
+        if (after.autoCurrent) await get().flushAuto()
+        return
+      }
+      const app = (info.app || '').trim()
+      const title = (info.title || '').trim()
+
+      // 锁屏 / 无前台窗口 / 本机自身应用：结算当前段后跳过
+      const isSelf = /timerecoder|electron/i.test(app)
+      if ((!app && !title) || isSelf) {
+        if (get().autoCurrent) await get().flushAuto()
+        return
+      }
+
+      const category = classifyWindow(app, title, get().autoRules)
+      const now = Date.now()
+      const current = get().autoCurrent
+
+      if (current) {
+        const sameApp = current.app.toLowerCase() === app.toLowerCase()
+        const sameCat = current.category === category
+        if (sameApp && sameCat) {
+          // 同一应用同一类别，仅更新标题展示，不新开段
+          const next: AutoSegment = { ...current, title }
+          savePersistedAuto(next)
+          set({ autoCurrent: next })
+          return
+        }
+        // 应用或类别变化：结算旧段
+        await get().flushAuto()
+      }
+
+      const next: AutoSegment = { app, title, category, startAt: now }
+      savePersistedAuto(next)
+      set({ autoCurrent: next })
+    } finally {
+      autoPolling = false
+    }
   },
 }))
