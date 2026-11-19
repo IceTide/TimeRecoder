@@ -268,8 +268,12 @@ select option { background: var(--panel); color: var(--text); }
   position: relative; overflow: hidden;
 }
 .focus-hero::before {
-  content: ''; position: absolute; width: 400px; height: 400px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(34, 211, 238, .14), transparent 70%); top: 20px;
+  content: ''; position: absolute; inset: 0;
+  /* 弥散氛围光：铺满整个 hero 且极淡，不产生任何可见的圆形边界/色带 */
+  background: radial-gradient(ellipse 62% 55% at 50% 44%,
+    rgba(34, 211, 238, .085),
+    rgba(34, 211, 238, .025) 45%,
+    transparent 72%);
   pointer-events: none;
 }
 .ring { position: relative; width: 260px; height: 260px; }
@@ -325,8 +329,10 @@ select option { background: var(--panel); color: var(--text); }
   transition: background .4s;
 }
 .focus-mode .focus-hero::before {
-  width: 560px; height: 560px; top: -30px;
-  background: radial-gradient(circle, rgba(34, 211, 238, .2), transparent 68%);
+  background: radial-gradient(ellipse 70% 62% at 50% 44%,
+    rgba(34, 211, 238, .14),
+    rgba(34, 211, 238, .045) 46%,
+    transparent 74%);
 }
 .focus-mode .ring svg circle:last-child { filter: drop-shadow(0 0 14px rgba(34, 211, 238, .7)); }
 .focus-mode .sidebar { border-right-color: var(--border-soft); }
