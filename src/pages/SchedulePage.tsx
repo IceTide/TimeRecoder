@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, Trash2, Play } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Trash2, Play, CalendarPlus } from 'lucide-react'
 import { format, startOfDay, addDays } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { useStore } from '../store/useStore'
@@ -81,6 +81,13 @@ export default function SchedulePage({ onToast }: Props) {
 
       {view === 'day' ? (
         <div className="card timeline">
+          {dayEvents.length === 0 && (
+            <div className="timeline-hint">
+              <div className="timeline-hint-icon"><CalendarPlus size={24} strokeWidth={1.6} /></div>
+              <div className="timeline-hint-title">这一天还没有安排</div>
+              <div className="timeline-hint-sub">点击时间轴的空白处，即可快速添加日程</div>
+            </div>
+          )}
           {HOURS.map((h) => {
             const hs = startOfDay(day).getTime() + h * 3600_000
             const he = hs + 3600_000

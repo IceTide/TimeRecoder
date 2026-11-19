@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Plus, Play, Pencil, Trash2, Search, Check } from 'lucide-react'
+import { Plus, Play, Pencil, Trash2, Search, Check, ListTodo } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import EmptyState from '../components/EmptyState'
 import type { Priority, Task, TaskStatus } from '../types'
 import Modal from '../components/Modal'
 import { PRIORITY_LABEL, fmtDate } from '../utils/time'
@@ -82,7 +83,11 @@ export default function TodoPage({ onToast }: Props) {
 
       <div className="card">
         {filtered.length === 0 ? (
-          <div className="empty"><div className="big">✓</div>{query ? '没有匹配的任务' : '这里空空如也，新建一个任务吧'}</div>
+          <EmptyState
+            icon={ListTodo}
+            title={query ? '没有匹配的任务' : '还没有任务'}
+            hint={query ? '试试换个关键词，或清空搜索条件' : '点击右上角「新建任务」，把要做的事一一清单化'}
+          />
         ) : filtered.map((t) => {
           const proj = projects.find((p) => p.id === t.projectId)
           const spent = taskTime(t.id)

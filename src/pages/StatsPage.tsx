@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Flame, PieChart as PieIcon, BarChart3, FolderOpen
 import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
 import Modal from '../components/Modal'
+import EmptyState from '../components/EmptyState'
 import { CATEGORY_LABEL, fmtDuration, fmtDate, fmtTime, fmtFriendlyDay } from '../utils/time'
 
 type Range = 'today' | 'week' | 'month'
@@ -28,17 +29,6 @@ const TOOLTIP_STYLE: CSSProperties = {
   color: '#eef0f6',
   fontSize: 12,
   boxShadow: '0 10px 30px rgba(0, 0, 0, .5)',
-}
-
-/** 精致空状态：图标 + 标题 + 引导文案 */
-function EmptyState({ icon: Icon, title, hint }: { icon: typeof PieIcon; title: string; hint: string }) {
-  return (
-    <div className="empty-state">
-      <div className="empty-state-icon"><Icon size={26} strokeWidth={1.6} /></div>
-      <div className="empty-state-title">{title}</div>
-      <div className="empty-state-hint">{hint}</div>
-    </div>
-  )
 }
 
 const emptyEntry = (): TimeEntry => {

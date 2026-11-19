@@ -87,7 +87,7 @@ export default function SettingsPage({ onToast }: Props) {
   }
 
   return (
-    <div className="page" style={{ maxWidth: 820 }}>
+    <div className="page">
       <div className="page-head">
         <div>
           <div className="page-title">设置</div>
