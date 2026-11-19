@@ -18,6 +18,8 @@ const AUTO_KEY = 'timerecoder.auto'
 let finishing = false
 // 自动追踪轮询串行化，避免上一次 IPC 未返回时再次结算造成重复段
 let autoPolling = false
+// 退出流程中：停止采集，避免结算后又被在途轮询重新开段
+let shuttingDown = false
 
 interface PersistedFocus {
   sessionId: number
@@ -52,6 +54,7 @@ export interface AutoSegment {
 }
 
 const AUTO_MAX_AGE_MS = 5 * 60 * 1000 // 自动段超过 5 分钟视为陈旧残留
+const AUTO_SEGMENT_MAX_MS = 15 * 60 * 1000 // 单段最长 15 分钟：超时强制落库并续段，避免长时间同应用工作的数据丢失
 
 function loadPersistedAuto(): AutoSegment | null {
   try {
@@ -129,6 +132,8 @@ interface State {
   pollAuto: () => Promise<void>
   /** 结算当前段（切走 / 锁屏 / 关闭追踪时调用） */
   flushAuto: () => Promise<void>
+  /** 退出前结算：停止后续采集并落库当前段 */
+  prepareShutdown: () => Promise<void>
 }
 
 function toFocusState(p: PersistedFocus): FocusState {
@@ -341,8 +346,14 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  prepareShutdown: async () => {
+    // 标记退出中，阻止在途 pollAuto 再开新段
+    shuttingDown = true
+    if (get().autoCurrent) await get().flushAuto()
+  },
+
   pollAuto: async () => {
-    if (autoPolling || !get().autoEnabled) return
+    if (autoPolling || shuttingDown || !get().autoEnabled) return
     autoPolling = true
     try {
       const state = get()
@@ -383,14 +394,15 @@ export const useStore = create<State>((set, get) => ({
       if (current) {
         const sameApp = current.app.toLowerCase() === app.toLowerCase()
         const sameCat = current.category === category
-        if (sameApp && sameCat) {
-          // 同一应用同一类别，仅更新标题展示，不新开段
+        const tooLong = now - current.startAt >= AUTO_SEGMENT_MAX_MS
+        if (sameApp && sameCat && !tooLong) {
+          // 同一应用同一类别且未超时，仅更新标题展示，不新开段
           const next: AutoSegment = { ...current, title }
           savePersistedAuto(next)
           set({ autoCurrent: next })
           return
         }
-        // 应用或类别变化：结算旧段
+        // 应用/类别变化，或单段超过上限：结算旧段（长段会被切成多个段落库，避免退出丢失）
         await get().flushAuto()
       }
 

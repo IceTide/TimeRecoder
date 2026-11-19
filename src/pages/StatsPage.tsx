@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { format } from 'date-fns'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { format, startOfDay, addDays } from 'date-fns'
+import { Plus, Pencil, Trash2, Flame } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
 import Modal from '../components/Modal'
@@ -43,21 +43,23 @@ export default function StatsPage() {
   const [range, setRange] = useState<Range>('today')
   const [editing, setEditing] = useState<TimeEntry | null>(null)
 
-  const scoped = useMemo(() => {
+  const rangeFrom = useMemo(() => {
     const now = new Date()
-    let from: number
-    if (range === 'today') { from = new Date(now.setHours(0, 0, 0, 0)).getTime() }
-    else if (range === 'week') {
+    if (range === 'today') return new Date(now.setHours(0, 0, 0, 0)).getTime()
+    if (range === 'week') {
       const d = new Date(); d.setHours(0, 0, 0, 0); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow)
-      from = d.getTime()
-    } else { from = new Date(now.getFullYear(), now.getMonth(), 1).getTime() }
-    return entries.filter((e) => e.startAt >= from).sort((a, b) => b.startAt - a.startAt)
-  }, [entries, range])
+      return d.getTime()
+    }
+    return new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  }, [range])
+
+  const scoped = useMemo(() => {
+    return entries.filter((e) => e.startAt >= rangeFrom).sort((a, b) => b.startAt - a.startAt)
+  }, [entries, rangeFrom])
 
   const totalSec = scoped.reduce((s, e) => s + e.durationSec, 0)
   const focusSec = scoped.filter((e) => e.category === 'focus').reduce((s, e) => s + e.durationSec, 0)
-  const doneTasks = tasks.filter((t) => t.status === 'done' && t.completedAt && scoped.some(e => e.taskId === t.id)).length
-  const days = new Set(scoped.map((e) => fmtDate(e.startAt))).size || 1
+  const doneTasks = tasks.filter((t) => t.status === 'done' && t.completedAt && t.completedAt >= rangeFrom).length
 
   const byCategory = CATS.map((c) => ({
     name: CATEGORY_LABEL[c],
@@ -81,6 +83,65 @@ export default function StatsPage() {
     })
     return Array.from(map.entries()).reverse().map(([name, min]) => ({ name, 分钟: Math.round(min) }))
   }, [scoped])
+
+  // 全量专注记录按天汇总（热力图/streak 不受 range 过滤，反映长期习惯）
+  const focusByDay = useMemo(() => {
+    const map = new Map<string, number>() // yyyy-MM-dd -> 专注秒数
+    entries.filter((e) => e.category === 'focus').forEach((e) => {
+      const k = fmtDate(e.startAt, 'yyyy-MM-dd')
+      map.set(k, (map.get(k) || 0) + e.durationSec)
+    })
+    return map
+  }, [entries])
+
+  // 连续专注天数：今天有记录则从今天起算，否则从昨天起算（今天还没结束不断签）
+  const streak = useMemo(() => {
+    let count = 0
+    let cursor = startOfDay(Date.now())
+    if (!focusByDay.has(fmtDate(cursor.getTime(), 'yyyy-MM-dd'))) {
+      cursor = addDays(cursor, -1)
+    }
+    while (focusByDay.has(fmtDate(cursor.getTime(), 'yyyy-MM-dd'))) {
+      count++
+      cursor = addDays(cursor, -1)
+    }
+    return count
+  }, [focusByDay])
+
+  // 热力图：最近 12 周（84 天），按列=周、行=周一~周日排列
+  const heatmap = useMemo(() => {
+    const today = startOfDay(Date.now())
+    const days: { key: string; date: Date; sec: number; level: number }[] = []
+    const total = 7 * 12
+    const start = addDays(today, -(total - 1))
+    for (let i = 0; i < total; i++) {
+      const d = addDays(start, i)
+      const key = fmtDate(d.getTime(), 'yyyy-MM-dd')
+      const sec = focusByDay.get(key) || 0
+      const min = sec / 60
+      const level = min <= 0 ? 0 : min < 25 ? 1 : min < 50 ? 2 : min < 90 ? 3 : 4
+      days.push({ key, date: d, sec, level })
+    }
+    // 补齐首列，使其从周一开始（date-fns getDay: 周日=0）
+    const lead = (days[0].date.getDay() + 6) % 7
+    for (let i = 0; i < lead; i++) {
+      days.unshift({ key: `pad-${i}`, date: addDays(days[0].date, -1), sec: -1, level: -1 })
+    }
+    return days
+  }, [focusByDay])
+
+  const heatWeeks = useMemo(() => {
+    const weeks: typeof heatmap[] = []
+    for (let i = 0; i < heatmap.length; i += 7) weeks.push(heatmap.slice(i, i + 7))
+    return weeks
+  }, [heatmap])
+
+  const totalFocusDays = focusByDay.size
+  const bestDay = useMemo(() => {
+    let best = 0
+    focusByDay.forEach((v) => { if (v > best) best = v })
+    return best
+  }, [focusByDay])
 
   const save = async () => {
     if (!editing || editing.endAt <= editing.startAt) return // 无效时间段不入库，弹窗内已有红字提示
@@ -111,8 +172,8 @@ export default function StatsPage() {
       <div className="stat-grid">
         <div className="card stat-card"><div className="k">总记录时长</div><div className="v">{fmtDuration(totalSec)}</div><div className="d">{range === 'today' ? '今日' : range === 'week' ? '本周' : '本月'}累计</div></div>
         <div className="card stat-card"><div className="k">专注时长</div><div className="v" style={{ color: 'var(--accent)' }}>{fmtDuration(focusSec)}</div><div className="d">占比 {totalSec ? Math.round(focusSec / totalSec * 100) : 0}%</div></div>
-        <div className="card stat-card"><div className="k">涉及任务</div><div className="v">{doneTasks}</div><div className="d">本次范围内完成</div></div>
-        <div className="card stat-card"><div className="k">日均记录</div><div className="v">{fmtDuration(Math.round(totalSec / days))}</div><div className="d">覆盖 {days} 天</div></div>
+        <div className="card stat-card"><div className="k">连续专注</div><div className="v" style={{ color: 'var(--orange)' }}>{streak}<span style={{ fontSize: 14 }}> 天</span></div><div className="d"><Flame size={11} style={{ verticalAlign: -1 }} /> 最长连续记录</div></div>
+        <div className="card stat-card"><div className="k">本次完成</div><div className="v">{doneTasks}</div><div className="d">任务 · 专注 {totalFocusDays} 天</div></div>
       </div>
 
       <div className="charts-row">
@@ -165,6 +226,35 @@ export default function StatsPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : <div className="empty">暂无数据</div>}
+        </div>
+      </div>
+
+      <div className="card heatmap-card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: '18px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
+          <div>
+            <div className="card-title">专注热力图</div>
+            <div className="card-sub">最近 12 周的专注分布 · 单日最佳 {fmtDuration(bestDay)}</div>
+          </div>
+          <div className="heat-legend">
+            <span>少</span>
+            {[0, 1, 2, 3, 4].map((lv) => <i key={lv} className={`heat-cell heat-lv-${lv}`} />)}
+            <span>多</span>
+          </div>
+        </div>
+        <div className="heatmap-body">
+          <div className="heat-map">
+            {heatWeeks.map((week, wi) => (
+              <div className="heat-week" key={wi}>
+                {week.map((d) => (
+                  <div
+                    key={d.key}
+                    className={`heat-cell heat-lv-${d.level}`}
+                    title={d.level < 0 ? '' : `${d.key} · 专注 ${fmtDuration(d.sec)}`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

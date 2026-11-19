@@ -114,7 +114,27 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', () => { isQuitting = true })
+// 退出握手：先让渲染进程结算自动追踪当前段并落库，再真正退出。
+// 带 2 秒兜底，避免渲染进程无响应时卡死退出流程。
+let quitConfirmed = false
+let quitFallback: ReturnType<typeof setTimeout> | null = null
+
+app.on('before-quit', (event) => {
+  isQuitting = true
+  if (quitConfirmed) return // 握手已完成或已兜底放行
+  event.preventDefault()
+  sendToRenderer('prepare-quit')
+  quitFallback = setTimeout(() => {
+    quitConfirmed = true
+    app.quit()
+  }, 2000)
+})
+
+ipcMain.on('quit-ready', () => {
+  if (quitFallback) { clearTimeout(quitFallback); quitFallback = null }
+  quitConfirmed = true
+  app.quit()
+})
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

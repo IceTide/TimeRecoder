@@ -14,6 +14,8 @@ const api = {
     ipcRenderer.on('app-action', listener)
     return () => ipcRenderer.removeListener('app-action', listener)
   },
+  /** 通知主进程：渲染侧的退出结算已完成，可以真正退出 */
+  quitReady: () => ipcRenderer.send('quit-ready'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

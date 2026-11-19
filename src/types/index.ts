@@ -93,6 +93,7 @@ declare global {
       activeWindowTitle: () => Promise<string>
       activeWindowInfo: () => Promise<string>
       onAppAction: (handler: (action: string) => void) => () => void
+      quitReady: () => void
     }
   }
 }

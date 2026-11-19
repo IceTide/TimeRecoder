@@ -65,6 +65,11 @@ export default function App() {
     if (!api?.onAppAction) return
     const off = api.onAppAction(async (action) => {
       const s = useStore.getState()
+      // 主进程退出握手：先结算自动追踪当前段落库，再回复允许退出
+      if (action === 'prepare-quit') {
+        try { await s.prepareShutdown() } finally { window.electronAPI?.quitReady?.() }
+        return
+      }
       if (action === 'goto-settings') { setTab('settings'); return }
       if (action === 'start-focus') {
         if (s.focus) { setToast('已有进行中的专注'); setTab('focus'); return }
