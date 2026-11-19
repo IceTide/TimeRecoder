@@ -61,16 +61,16 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
             <svg width="260" height="260" viewBox="0 0 260 260">
               <defs>
                 <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#22d3ee" />
-                  <stop offset="100%" stopColor="#8b6bff" />
+                  <stop offset="0%" stopColor="#7d9ba6" />
+                  <stop offset="100%" stopColor="#8a7f9c" />
                 </linearGradient>
               </defs>
-              {/* 外层科技刻度环 */}
-              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(34,211,238,.12)" strokeWidth="1" />
-              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(34,211,238,.35)" strokeWidth="5"
+              {/* 外层刻度环 */}
+              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
+              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(160,175,185,.28)" strokeWidth="5"
                 strokeDasharray="1 11.8" strokeLinecap="round" />
-              {/* 主轨道 + 渐变进度环 */}
-              <circle cx="130" cy="130" r={R} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="11" />
+              {/* 主轨道 + 哑光进度环 */}
+              <circle cx="130" cy="130" r={R} fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="11" />
               <circle cx="130" cy="130" r={R} fill="none" stroke="url(#ringGradient)" strokeWidth="11"
                 strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
                 style={{ transition: 'stroke-dashoffset .5s linear' }} />

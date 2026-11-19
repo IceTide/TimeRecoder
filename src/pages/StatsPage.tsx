@@ -12,23 +12,23 @@ type Range = 'today' | 'week' | 'month'
 
 const CATS: TimeCategory[] = ['focus', 'meeting', 'admin', 'learning', 'other']
 
-/* 科技青紫图表配色：高饱和霓虹色，深色背景下清晰醒目 */
+/* 低饱和哑光图表配色：莫兰迪色系，柔和高级 */
 const CHART_COLOR: Record<string, string> = {
-  focus: '#22d3ee',   // 霓虹青
-  meeting: '#f5a524', // 琥珀
-  admin: '#7a8fa0',   // 冷灰蓝
-  learning: '#a78bfa',// 亮紫
-  other: '#34d399',   // 翠绿
+  focus: '#7d9ba6',    // 雾蓝灰
+  meeting: '#c99a5b',  // 柔和琥珀
+  admin: '#7d7f86',    // 中性灰
+  learning: '#8a7f9c', // 灰紫
+  other: '#6fae8c',    // 柔和绿
 }
 
 /* Recharts 深色 Tooltip 统一样式 */
 const TOOLTIP_STYLE: CSSProperties = {
-  background: '#1e222c',
-  border: '1px solid #343a49',
-  borderRadius: 10,
-  color: '#eef0f6',
+  background: '#23262b',
+  border: '1px solid #343a41',
+  borderRadius: 8,
+  color: '#e8e9eb',
   fontSize: 12,
-  boxShadow: '0 10px 30px rgba(0, 0, 0, .5)',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, .4)',
 }
 
 const emptyEntry = (): TimeEntry => {
@@ -74,16 +74,22 @@ export default function StatsPage() {
     color: p.color,
   })).filter((d) => d.value > 0)
   const untagged = Math.round(scoped.filter((e) => !e.projectId).reduce((s, e) => s + e.durationSec, 0) / 60)
-  if (untagged > 0) byProject.push({ name: '未分类', value: untagged, color: '#6f7686' })
+  if (untagged > 0) byProject.push({ name: '未分类', value: untagged, color: '#6a6f78' })
 
   const byDay = useMemo(() => {
     const map = new Map<string, number>()
     scoped.forEach((e) => {
-      const k = fmtDate(e.startAt, 'M/d')
+      // 今日按小时分桶（时段分布），本周/本月按天分桶
+      const k = range === 'today'
+        ? `${String(new Date(e.startAt).getHours()).padStart(2, '0')}:00`
+        : fmtDate(e.startAt, 'M/d')
       map.set(k, (map.get(k) || 0) + e.durationSec / 60)
     })
-    return Array.from(map.entries()).reverse().map(([name, min]) => ({ name, 分钟: Math.round(min) }))
-  }, [scoped])
+    const list = Array.from(map.entries())
+    if (range === 'today') list.sort((a, b) => a[0].localeCompare(b[0]))
+    else list.reverse()
+    return list.map(([name, min]) => ({ name, 分钟: Math.round(min) }))
+  }, [scoped, range])
 
   // 全量专注记录按天汇总（热力图/streak 不受 range 过滤，反映长期习惯）
   const focusByDay = useMemo(() => {
@@ -191,8 +197,8 @@ export default function StatsPage() {
                   <Tooltip
                     formatter={(v) => `${v} 分钟`}
                     contentStyle={TOOLTIP_STYLE}
-                    itemStyle={{ color: '#eef0f6' }}
-                    labelStyle={{ color: '#a2a8b8' }}
+                    itemStyle={{ color: '#e8e9eb' }}
+                    labelStyle={{ color: '#9a9ea6' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -202,28 +208,28 @@ export default function StatsPage() {
         </div>
 
         <div className="card chart-box">
-          <div className="card-title">每日趋势</div>
-          <div className="card-sub" style={{ marginBottom: 8 }}>每日记录分钟数</div>
+          <div className="card-title">{range === 'today' ? '今日时段分布' : '每日趋势'}</div>
+          <div className="card-sub" style={{ marginBottom: 8 }}>{range === 'today' ? '各时段记录分钟数' : '每日记录分钟数'}</div>
           {byDay.length ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={byDay}>
                 <defs>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22d3ee" />
-                    <stop offset="100%" stopColor="#8b6bff" />
+                    <stop offset="0%" stopColor="#8fa9b3" />
+                    <stop offset="100%" stopColor="#6b7a86" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(34,211,238,.09)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#8b93a5' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#8b93a5' }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,.05)" />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#7d828a' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#7d828a' }} axisLine={false} tickLine={false} />
                 <Tooltip
                   formatter={(v) => `${v} 分钟`}
                   contentStyle={TOOLTIP_STYLE}
-                  itemStyle={{ color: '#eef0f6' }}
-                  labelStyle={{ color: '#a2a8b8' }}
+                  itemStyle={{ color: '#e8e9eb' }}
+                  labelStyle={{ color: '#9a9ea6' }}
                   cursor={{ fill: 'rgba(255,255,255,.04)' }}
                 />
-                <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} maxBarSize={42} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyState icon={BarChart3} title="暂无趋势数据" hint="记录几天时间后，这里会绘制你的每日投入曲线" />}

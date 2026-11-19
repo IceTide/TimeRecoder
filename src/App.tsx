@@ -13,7 +13,7 @@ import SettingsPage from './pages/SettingsPage'
 
 type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'settings'
 
-const COLORS = ['#22d3ee', '#34d399', '#f5a524', '#a78bfa', '#f87171', '#38bdf8']
+const COLORS = ['#7d9ba6', '#6fae8c', '#c99a5b', '#8a7f9c', '#c97a7a', '#7d92a8']
 
 /** 独立时钟组件：仅自身每秒重渲染，不触发整个 App 刷新 */
 function ClockTag() {
