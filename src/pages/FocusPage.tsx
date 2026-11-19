@@ -59,20 +59,20 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
         <div className="card focus-hero">
           <div className="ring">
             <svg width="260" height="260" viewBox="0 0 260 260">
-              <defs>
-                <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#7d9ba6" />
-                  <stop offset="100%" stopColor="#8a7f9c" />
-                </linearGradient>
-              </defs>
-              {/* 外层刻度环 */}
-              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
-              <circle cx="130" cy="130" r="123" fill="none" stroke="rgba(160,175,185,.28)" strokeWidth="5"
-                strokeDasharray="1 11.8" strokeLinecap="round" />
-              {/* 主轨道 + 哑光进度环 */}
-              <circle cx="130" cy="130" r={R} fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="11" />
-              <circle cx="130" cy="130" r={R} fill="none" stroke="url(#ringGradient)" strokeWidth="11"
-                strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
+              {/* 精密刻度盘：细密刻度 + 四方位标记 */}
+              <circle cx="130" cy="130" r="124" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
+              <circle cx="130" cy="130" r="124" fill="none" stroke="rgba(160,172,182,.32)" strokeWidth="6"
+                strokeDasharray="0.8 12.2" />
+              {[0, 90, 180, 270].map((deg) => (
+                <line key={deg} x1="130" y1="4" x2="130" y2="12"
+                  stroke="var(--accent)" strokeWidth="1.5"
+                  transform={`rotate(${deg} 130 130)`} />
+              ))}
+              {/* 主轨道（凹槽）+ 琥珀进度弧 */}
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--bg-deep)" strokeWidth="9" />
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--border)" strokeWidth="1" />
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--accent)" strokeWidth="9"
+                strokeLinecap="butt" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
                 style={{ transition: 'stroke-dashoffset .5s linear' }} />
             </svg>
             <div className="ring-center">

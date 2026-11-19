@@ -44,11 +44,11 @@ export const CATEGORY_LABEL: Record<string, string> = {
 }
 
 export const CATEGORY_COLOR: Record<string, string> = {
-  focus: '#7d9ba6',
-  meeting: '#c99a5b',
-  admin: '#7d7f86',
-  learning: '#6fae8c',
-  other: '#8a7f9c',
+  focus: 'var(--cat-focus)',
+  meeting: 'var(--cat-meeting)',
+  admin: 'var(--cat-admin)',
+  learning: 'var(--cat-learning)',
+  other: 'var(--cat-other)',
 }
 
 export const PRIORITY_LABEL: Record<string, string> = {

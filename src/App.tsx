@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Focus, CalendarDays, ListTodo, BarChart3, Settings2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -13,7 +13,23 @@ import SettingsPage from './pages/SettingsPage'
 
 type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'settings'
 
-const COLORS = ['#7d9ba6', '#6fae8c', '#c99a5b', '#8a7f9c', '#c97a7a', '#7d92a8']
+const COLORS = ['var(--accent)', 'var(--cat-meeting)', 'var(--cat-learning)', 'var(--cat-other)', 'var(--red)', 'var(--blue)']
+
+/** 顶栏今日专注读数：从 entries 派生，数据变化时才更新 */
+function FocusTotalTag({ entries }: { entries: { startAt: number; endAt: number; durationSec: number; category: string }[] }) {
+  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }, [entries])
+  const sec = entries
+    .filter((e) => e.category === 'focus' && e.startAt >= todayStart)
+    .reduce((s, e) => s + e.durationSec, 0)
+  if (sec <= 0) return null
+  const m = Math.floor(sec / 60)
+  const label = m >= 60 ? `${Math.floor(m / 60)}h${m % 60}m` : `${m}m`
+  return (
+    <div className="focus-total-tag" title="今日累计专注">
+      <span className="ftt-label">FOCUS</span><span className="ftt-value">{label}</span>
+    </div>
+  )
+}
 
 /** 独立时钟组件：仅自身每秒重渲染，不触发整个 App 刷新 */
 function ClockTag() {
@@ -39,7 +55,7 @@ export default function App() {
   const [projModal, setProjModal] = useState(false)
   const [projName, setProjName] = useState('')
   const [projColor, setProjColor] = useState(COLORS[0])
-  const { loadAll, loaded, projects, addProject, focus, tickFocus, finishFocus,
+  const { loadAll, loaded, projects, entries, addProject, focus, tickFocus, finishFocus,
     autoEnabled, autoIntervalSec, autoCurrent, pollAuto, flushAuto } = useStore()
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -183,6 +199,7 @@ export default function App() {
             </div>
             <div className="topbar-right">
               <ClockTag />
+              <FocusTotalTag entries={entries} />
               <div className="sys-tag"><span className="led" />SYS · ONLINE</div>
               {autoEnabled && !focus && (
                 <button className="auto-pill" onClick={() => setTab('settings')} title="自动追踪进行中，点击设置查看">

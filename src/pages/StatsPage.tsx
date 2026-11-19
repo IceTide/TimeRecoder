@@ -12,23 +12,24 @@ type Range = 'today' | 'week' | 'month'
 
 const CATS: TimeCategory[] = ['focus', 'meeting', 'admin', 'learning', 'other']
 
-/* 低饱和哑光图表配色：莫兰迪色系，柔和高级 */
+/* 数据分类色：由设计 token 驱动（专注=琥珀强调，其余冷灰辅助色） */
 const CHART_COLOR: Record<string, string> = {
-  focus: '#7d9ba6',    // 雾蓝灰
-  meeting: '#c99a5b',  // 柔和琥珀
-  admin: '#7d7f86',    // 中性灰
-  learning: '#8a7f9c', // 灰紫
-  other: '#6fae8c',    // 柔和绿
+  focus: 'var(--cat-focus)',
+  meeting: 'var(--cat-meeting)',
+  admin: 'var(--cat-admin)',
+  learning: 'var(--cat-learning)',
+  other: 'var(--cat-other)',
 }
 
-/* Recharts 深色 Tooltip 统一样式 */
+/* Recharts Tooltip：仪器面板风格 */
 const TOOLTIP_STYLE: CSSProperties = {
-  background: '#23262b',
-  border: '1px solid #343a41',
-  borderRadius: 8,
-  color: '#e8e9eb',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--border)',
+  borderRadius: 3,
+  color: 'var(--text)',
   fontSize: 12,
-  boxShadow: '0 8px 24px rgba(0, 0, 0, .4)',
+  fontFamily: 'var(--font-mono)',
+  boxShadow: '0 8px 24px oklch(0% 0 0 / .4)',
 }
 
 const emptyEntry = (): TimeEntry => {
@@ -74,7 +75,7 @@ export default function StatsPage() {
     color: p.color,
   })).filter((d) => d.value > 0)
   const untagged = Math.round(scoped.filter((e) => !e.projectId).reduce((s, e) => s + e.durationSec, 0) / 60)
-  if (untagged > 0) byProject.push({ name: '未分类', value: untagged, color: '#6a6f78' })
+  if (untagged > 0) byProject.push({ name: '未分类', value: untagged, color: 'var(--cat-admin)' })
 
   const byDay = useMemo(() => {
     const map = new Map<string, number>()
@@ -197,8 +198,8 @@ export default function StatsPage() {
                   <Tooltip
                     formatter={(v) => `${v} 分钟`}
                     contentStyle={TOOLTIP_STYLE}
-                    itemStyle={{ color: '#e8e9eb' }}
-                    labelStyle={{ color: '#9a9ea6' }}
+                    itemStyle={{ color: 'var(--text)' }}
+                    labelStyle={{ color: 'var(--text-faint)' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -215,18 +216,18 @@ export default function StatsPage() {
               <BarChart data={byDay}>
                 <defs>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8fa9b3" />
-                    <stop offset="100%" stopColor="#6b7a86" />
+                    <stop offset="0%" stopColor="var(--accent)" />
+                    <stop offset="100%" stopColor="var(--accent-deep)" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,.05)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#7d828a' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#7d828a' }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-soft)" />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-mute)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--text-mute)' }} axisLine={false} tickLine={false} />
                 <Tooltip
                   formatter={(v) => `${v} 分钟`}
                   contentStyle={TOOLTIP_STYLE}
-                  itemStyle={{ color: '#e8e9eb' }}
-                  labelStyle={{ color: '#9a9ea6' }}
+                  itemStyle={{ color: 'var(--text)' }}
+                  labelStyle={{ color: 'var(--text-faint)' }}
                   cursor={{ fill: 'rgba(255,255,255,.04)' }}
                 />
                 <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} maxBarSize={42} />

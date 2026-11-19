@@ -10,10 +10,10 @@ import { fmtTime } from '../utils/time'
 interface Props { onToast: (msg: string) => void }
 
 const TYPE_META: Record<EventType, { label: string; color: string; bg: string }> = {
-  meeting: { label: '会议', color: '#c99a5b', bg: 'rgba(201, 154, 91, .13)' },
-  task: { label: '任务', color: '#7d9ba6', bg: 'rgba(125, 155, 166, .14)' },
-  personal: { label: '个人', color: '#6fae8c', bg: 'rgba(111, 174, 140, .13)' },
-  break: { label: '休息', color: '#8a8f98', bg: 'rgba(138, 143, 152, .13)' },
+  meeting: { label: '会议', color: 'var(--cat-meeting)', bg: 'color-mix(in oklch, var(--cat-meeting) 13%, transparent)' },
+  task: { label: '任务', color: 'var(--accent)', bg: 'color-mix(in oklch, var(--accent) 12%, transparent)' },
+  personal: { label: '个人', color: 'var(--cat-learning)', bg: 'color-mix(in oklch, var(--cat-learning) 13%, transparent)' },
+  break: { label: '休息', color: 'var(--cat-admin)', bg: 'color-mix(in oklch, var(--cat-admin) 13%, transparent)' },
 }
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 7) // 07:00 - 22:00
