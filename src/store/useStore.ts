@@ -247,10 +247,21 @@ export const useStore = create<State>((set, get) => ({
     if (!f) return undefined
     finishing = true
     try {
-      const endAt = Date.now()
+      const wallEndAt = Date.now()
       const elapsedSec = f.segmentStartAt !== null
-        ? f.accumulatedSec + (endAt - f.segmentStartAt) / 1000
+        ? f.accumulatedSec + (wallEndAt - f.segmentStartAt) / 1000
         : f.accumulatedSec
+
+      // completed 走番茄钟语义：记账时长收敛到计划时长，避免后台/休眠导致定时器节流、
+      // 到点检测延迟时记出超出计划的时长（如 25 分钟专注记成数小时），并保证备注与时长一致。
+      // aborted 为手动结束，据实记录实际专注时长。
+      const plannedSec = f.plannedMin * 60
+      const isCompleted = status === 'completed'
+      const bookedSec = isCompleted && elapsedSec > plannedSec ? plannedSec : elapsedSec
+      // 结束时刻：completed 时用计划结束点修正墙钟时间，让时间轴与时长吻合
+      const endAt = isCompleted && elapsedSec > plannedSec
+        ? f.startAt + plannedSec * 1000
+        : wallEndAt
 
       // 先同步清空前端状态，避免 1 秒 tick 或 UI 再读到进行中的会话
       savePersistedFocus(null)
@@ -264,23 +275,23 @@ export const useStore = create<State>((set, get) => ({
 
       const task = f.taskId ? get().tasks.find((t) => t.id === f.taskId) : undefined
       // 完成或手动提前结束，只要产生了有效时长都记账，避免专注成果丢失
-      if (elapsedSec >= 1) {
+      if (bookedSec >= 1) {
         await repo.addEntry({
           taskId: f.taskId,
           projectId: task?.projectId,
           category: 'focus',
           startAt: f.startAt,
           endAt,
-          durationSec: Math.round(elapsedSec),
+          durationSec: Math.round(bookedSec),
           source: 'focus',
-          note: status === 'completed'
-            ? `专注 ${f.plannedMin} 分钟`
-            : `专注中断 · 实际 ${Math.round(elapsedSec / 60)} 分钟`,
+          note: isCompleted
+            ? `专注 ${Math.round(bookedSec / 60)} 分钟`
+            : `专注中断 · 实际 ${Math.round(bookedSec / 60)} 分钟`,
           createdAt: Date.now(),
         })
       }
       // 只有真正完成整个番茄钟才自动把任务标记为完成
-      if (status === 'completed' && task?.id && task.status !== 'done') {
+      if (isCompleted && task?.id && task.status !== 'done') {
         await repo.updateTask(task.id, { status: 'done', completedAt: Date.now() })
       }
 
@@ -288,7 +299,7 @@ export const useStore = create<State>((set, get) => ({
         repo.getSessions(), repo.getEntries(), repo.getTasks(),
       ])
       set({ sessions, entries, tasks })
-      return elapsedSec
+      return bookedSec
     } finally {
       finishing = false
     }
