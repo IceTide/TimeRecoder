@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { format, startOfDay, addDays } from 'date-fns'
-import { Plus, Pencil, Trash2, Flame } from 'lucide-react'
+import { Plus, Pencil, Trash2, Flame, PieChart as PieIcon, BarChart3, FolderOpen, History } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
 import Modal from '../components/Modal'
@@ -28,6 +28,17 @@ const TOOLTIP_STYLE: CSSProperties = {
   color: '#eef0f6',
   fontSize: 12,
   boxShadow: '0 10px 30px rgba(0, 0, 0, .5)',
+}
+
+/** 精致空状态：图标 + 标题 + 引导文案 */
+function EmptyState({ icon: Icon, title, hint }: { icon: typeof PieIcon; title: string; hint: string }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-state-icon"><Icon size={26} strokeWidth={1.6} /></div>
+      <div className="empty-state-title">{title}</div>
+      <div className="empty-state-hint">{hint}</div>
+    </div>
+  )
 }
 
 const emptyEntry = (): TimeEntry => {
@@ -197,7 +208,7 @@ export default function StatsPage() {
               </ResponsiveContainer>
               <div className="legend">{byCategory.map((d) => <span key={d.name}><i style={{ background: d.color }} />{d.name} {d.value}分</span>)}</div>
             </>
-          ) : <div className="empty">暂无数据</div>}
+          ) : <EmptyState icon={PieIcon} title="暂无时间构成" hint="完成专注或开启自动追踪后，这里会展示各类活动的占比" />}
         </div>
 
         <div className="card chart-box">
@@ -225,7 +236,7 @@ export default function StatsPage() {
                 <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <div className="empty">暂无数据</div>}
+          ) : <EmptyState icon={BarChart3} title="暂无趋势数据" hint="记录几天时间后，这里会绘制你的每日投入曲线" />}
         </div>
       </div>
 
@@ -272,7 +283,7 @@ export default function StatsPage() {
               </div>
             ))}
           </div>
-        ) : <div className="empty">暂无项目数据</div>}
+        ) : <EmptyState icon={FolderOpen} title="暂无项目数据" hint="创建项目并在专注时关联，即可按项目查看时间投入" />}
       </div>
 
       <div className="card">
@@ -280,7 +291,7 @@ export default function StatsPage() {
           <div className="card-title">时间明细</div>
           <div className="card-sub">共 {scoped.length} 条记录</div>
         </div>
-        {scoped.length === 0 ? <div className="empty">还没有记录，完成一次专注或手动补录吧</div> : scoped.map((e) => {
+        {scoped.length === 0 ? <EmptyState icon={History} title="还没有时间记录" hint="完成一次专注、开启自动追踪，或点击右上角「补录时间」开始" /> : scoped.map((e) => {
           const task = tasks.find((t) => t.id === e.taskId)
           const proj = projects.find((p) => p.id === e.projectId)
           return (

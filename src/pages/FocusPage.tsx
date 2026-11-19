@@ -101,6 +101,12 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
               </>
             )}
           </div>
+
+          <div className="focus-ambient">
+            <span className="ambient-line" />
+            {focus ? '保持节奏，你正在变得更好' : '一次只做一件事 · 把时间交给重要的事'}
+            <span className="ambient-line" />
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

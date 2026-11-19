@@ -15,6 +15,24 @@ type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'settings'
 
 const COLORS = ['#22d3ee', '#34d399', '#f5a524', '#a78bfa', '#f87171', '#38bdf8']
 
+/** 独立时钟组件：仅自身每秒重渲染，不触发整个 App 刷新 */
+function ClockTag() {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [])
+  const d = new Date(now)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return (
+    <div className="clock-tag" title="当前时间">
+      <span className="clock-hm">{hh}:{mm}</span><span className="clock-s">:{ss}</span>
+    </div>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('focus')
   const [toast, setToast] = useState('')
@@ -164,6 +182,7 @@ export default function App() {
               <span>把时间花在重要的事上</span>
             </div>
             <div className="topbar-right">
+              <ClockTag />
               <div className="sys-tag"><span className="led" />SYS · ONLINE</div>
               {autoEnabled && !focus && (
                 <button className="auto-pill" onClick={() => setTab('settings')} title="自动追踪进行中，点击设置查看">
