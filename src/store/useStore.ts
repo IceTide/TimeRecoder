@@ -10,6 +10,9 @@ import type {
 
 const FOCUS_KEY = 'timerecoder.focus'
 
+// 防止 1 秒 tick 在异步 finishFocus 完成前重复触发，造成重复记账/重复通知
+let finishing = false
+
 interface PersistedFocus {
   sessionId: number
   taskId?: number
@@ -167,41 +170,56 @@ export const useStore = create<State>((set, get) => ({
   },
 
   finishFocus: async (status) => {
+    if (finishing) return undefined
     const f = get().focus
-    if (!f) return
-    const endAt = Date.now()
-    const elapsedSec = f.segmentStartAt !== null
-      ? f.accumulatedSec + (endAt - f.segmentStartAt) / 1000
-      : f.accumulatedSec
+    if (!f) return undefined
+    finishing = true
+    try {
+      const endAt = Date.now()
+      const elapsedSec = f.segmentStartAt !== null
+        ? f.accumulatedSec + (endAt - f.segmentStartAt) / 1000
+        : f.accumulatedSec
 
-    await repo.updateSession(f.sessionId, {
-      endAt,
-      status,
-      pauseCount: f.pauseCount,
-    })
-    if (status === 'completed' && elapsedSec >= 1) {
-      const task = f.taskId ? get().tasks.find((t) => t.id === f.taskId) : undefined
-      await repo.addEntry({
-        taskId: f.taskId,
-        projectId: task?.projectId,
-        category: 'focus',
-        startAt: f.startAt,
+      // 先同步清空前端状态，避免 1 秒 tick 或 UI 再读到进行中的会话
+      savePersistedFocus(null)
+      set({ focus: null })
+
+      await repo.updateSession(f.sessionId, {
         endAt,
-        durationSec: Math.round(elapsedSec),
-        source: 'focus',
-        note: `专注 ${f.plannedMin} 分钟`,
-        createdAt: Date.now(),
+        status,
+        pauseCount: f.pauseCount,
       })
-      if (task?.id && task.status !== 'done') {
+
+      const task = f.taskId ? get().tasks.find((t) => t.id === f.taskId) : undefined
+      // 完成或手动提前结束，只要产生了有效时长都记账，避免专注成果丢失
+      if (elapsedSec >= 1) {
+        await repo.addEntry({
+          taskId: f.taskId,
+          projectId: task?.projectId,
+          category: 'focus',
+          startAt: f.startAt,
+          endAt,
+          durationSec: Math.round(elapsedSec),
+          source: 'focus',
+          note: status === 'completed'
+            ? `专注 ${f.plannedMin} 分钟`
+            : `专注中断 · 实际 ${Math.round(elapsedSec / 60)} 分钟`,
+          createdAt: Date.now(),
+        })
+      }
+      // 只有真正完成整个番茄钟才自动把任务标记为完成
+      if (status === 'completed' && task?.id && task.status !== 'done') {
         await repo.updateTask(task.id, { status: 'done', completedAt: Date.now() })
       }
+
+      const [sessions, entries, tasks] = await Promise.all([
+        repo.getSessions(), repo.getEntries(), repo.getTasks(),
+      ])
+      set({ sessions, entries, tasks })
+      return elapsedSec
+    } finally {
+      finishing = false
     }
-    savePersistedFocus(null)
-    const [sessions, entries, tasks] = await Promise.all([
-      repo.getSessions(), repo.getEntries(), repo.getTasks(),
-    ])
-    set({ focus: null, sessions, entries, tasks })
-    return elapsedSec
   },
 
   tickFocus: () => {

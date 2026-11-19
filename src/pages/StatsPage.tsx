@@ -83,7 +83,7 @@ export default function StatsPage() {
   }, [scoped])
 
   const save = async () => {
-    if (!editing) return
+    if (!editing || editing.endAt <= editing.startAt) return // 无效时间段不入库，弹窗内已有红字提示
     const durationSec = Math.max(0, Math.round((editing.endAt - editing.startAt) / 1000))
     const payload = { ...editing, durationSec }
     if (editing.id) await updateEntry(editing.id, payload)

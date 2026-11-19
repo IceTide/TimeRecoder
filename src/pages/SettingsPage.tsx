@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download, Upload, Info, Save } from 'lucide-react'
-import { getSetting, setSetting, exportBackup, importBackup } from '../db/database'
+import { getSetting, setSetting, exportBackup, importBackup, validateBackup } from '../db/database'
 import { useStore } from '../store/useStore'
 
 interface Props { onToast: (msg: string) => void }
@@ -32,20 +32,26 @@ export default function SettingsPage({ onToast }: Props) {
     const a = document.createElement('a')
     a.href = url
     a.download = `timerecoder-backup-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    a.remove()
+    // 延迟释放，避免部分浏览器在 click 尚未完成下载时就撤销 URL
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     onToast('备份已导出')
   }
 
   const doImport = async (file: File) => {
     try {
-      const data = JSON.parse(await file.text())
-      if (!data || data.version !== 1) throw new Error('bad format')
+      const data: unknown = JSON.parse(await file.text())
+      if (!validateBackup(data)) {
+        onToast('导入失败：不是有效的 TimeRecoder 备份文件')
+        return
+      }
       await importBackup(data)
       await loadAll()
       onToast('数据已恢复')
     } catch {
-      onToast('导入失败：文件格式不正确')
+      onToast('导入失败：文件解析错误或数据损坏')
     }
   }
 

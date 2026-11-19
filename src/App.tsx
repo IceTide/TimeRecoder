@@ -33,9 +33,12 @@ export default function App() {
       tickFocus()
       const latest = useStore.getState().focus
       if (latest && latest.elapsedSec >= latest.plannedMin * 60) {
-        await finishFocus('completed')
-        window.electronAPI?.notify?.('专注完成 🎉', `已完成 ${latest.plannedMin} 分钟专注，起来活动一下吧`)
-        setToast('专注完成！已记录到时间统计')
+        // finishFocus 返回 undefined 表示已被并发调用锁定/处理，避免重复通知
+        const finished = await finishFocus('completed')
+        if (finished !== undefined) {
+          window.electronAPI?.notify?.('专注完成 🎉', `已完成 ${latest.plannedMin} 分钟专注，起来活动一下吧`)
+          setToast('专注完成！已记录到时间统计')
+        }
       }
     }, 1000)
     return () => window.clearInterval(timer)

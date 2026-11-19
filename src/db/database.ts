@@ -92,7 +92,17 @@ export async function exportBackup() {
   return { version: 1, exportedAt: Date.now(), projects, tasks, timeEntries, focusSessions, events, settings }
 }
 
-export async function importBackup(data: Awaited<ReturnType<typeof exportBackup>>) {
+/** 校验备份文件结构，避免脏数据覆盖现有数据 */
+export function validateBackup(data: unknown): data is Awaited<ReturnType<typeof exportBackup>> {
+  if (!data || typeof data !== 'object') return false
+  const d = data as Record<string, unknown>
+  if (d.version !== 1) return false
+  return ['projects', 'tasks', 'timeEntries', 'focusSessions', 'events', 'settings']
+    .every((key) => Array.isArray(d[key]))
+}
+
+export async function importBackup(data: unknown) {
+  if (!validateBackup(data)) throw new Error('Invalid backup file')
   await db.transaction('rw', [db.projects, db.tasks, db.timeEntries, db.focusSessions, db.events, db.settings], async () => {
     await Promise.all([
       db.projects.clear(), db.tasks.clear(), db.timeEntries.clear(),

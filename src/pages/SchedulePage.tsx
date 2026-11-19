@@ -52,7 +52,8 @@ export default function SchedulePage({ onToast }: Props) {
     onToast('已按该日程时长开始专注')
   }
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(day, i - new Date(day).getDay()))
+  // 以周一为周起始，与统计页的周范围口径保持一致
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(day, i - ((new Date(day).getDay() + 6) % 7)))
 
   return (
     <div className="page">
