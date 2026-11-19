@@ -1,0 +1,157 @@
+import { useEffect, useState } from 'react'
+import { Focus, CalendarDays, ListTodo, BarChart3, Settings2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { zhCN } from 'date-fns/locale'
+import { useStore } from './store/useStore'
+import type { Project } from './types'
+import Modal from './components/Modal'
+import FocusPage from './pages/FocusPage'
+import SchedulePage from './pages/SchedulePage'
+import TodoPage from './pages/TodoPage'
+import StatsPage from './pages/StatsPage'
+import SettingsPage from './pages/SettingsPage'
+
+type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'settings'
+
+const COLORS = ['#5b6ef5', '#27ae60', '#f2994a', '#bb6bd9', '#e05a5a', '#00a8a8']
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('focus')
+  const [toast, setToast] = useState('')
+  const [projModal, setProjModal] = useState(false)
+  const [projName, setProjName] = useState('')
+  const [projColor, setProjColor] = useState(COLORS[0])
+  const { loadAll, loaded, projects, addProject, focus, tickFocus, finishFocus } = useStore()
+
+  useEffect(() => { loadAll() }, [loadAll])
+
+  // 全局每秒推进专注计时；到点自动完成并提醒
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      const f = useStore.getState().focus
+      if (!f || f.segmentStartAt === null) return
+      tickFocus()
+      const latest = useStore.getState().focus
+      if (latest && latest.elapsedSec >= latest.plannedMin * 60) {
+        await finishFocus('completed')
+        window.electronAPI?.notify?.('专注完成 🎉', `已完成 ${latest.plannedMin} 分钟专注，起来活动一下吧`)
+        setToast('专注完成！已记录到时间统计')
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [tickFocus, finishFocus])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(''), 3000)
+    return () => window.clearTimeout(t)
+  }, [toast])
+
+  const nav = [
+    { id: 'focus' as Tab, label: '专注模式', icon: Focus },
+    { id: 'schedule' as Tab, label: '日程安排', icon: CalendarDays },
+    { id: 'todo' as Tab, label: '待办任务', icon: ListTodo },
+    { id: 'stats' as Tab, label: '时间统计', icon: BarChart3 },
+  ]
+
+  if (!loaded) return <div className="app"><div className="empty" style={{ margin: 'auto' }}>加载中…</div></div>
+
+  const createProject = async () => {
+    if (!projName.trim()) return
+    const p: Project = { name: projName.trim(), color: projColor, createdAt: Date.now() }
+    await addProject(p)
+    setProjName(''); setProjModal(false); setToast('项目已创建')
+  }
+
+  return (
+    <div className={focus ? 'focus-mode' : ''}>
+      <div className="app">
+        <aside className="sidebar">
+          <div className="brand">
+            <div className="brand-logo">T</div>
+            <div><div className="brand-name">TimeRecoder</div><div className="brand-sub">专注 · 记录 · 复盘</div></div>
+          </div>
+
+          <nav className="nav">
+            {nav.map((n) => {
+              const Icon = n.icon
+              return (
+                <button key={n.id} className={`nav-item ${tab === n.id ? 'active' : ''}`} onClick={() => setTab(n.id)}>
+                  <Icon size={17} /> {n.label}
+                </button>
+              )
+            })}
+          </nav>
+
+          <div className="side-section">
+            <div className="side-title">项目</div>
+            {projects.map((p) => (
+              <div className="project-item" key={p.id}>
+                <span className="dot" style={{ background: p.color }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+              </div>
+            ))}
+            <button className="side-add" onClick={() => setProjModal(true)}>+ 新建项目</button>
+          </div>
+
+          <div className="sidebar-footer">
+            <button className={`nav-item ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>
+              <Settings2 size={17} /> 设置
+            </button>
+            <div className="mini">本地存储 · 数据仅保存在本机<br/>v0.1.0 MVP</div>
+          </div>
+        </aside>
+
+        <div className="main">
+          <header className="topbar">
+            <div className="today-label">
+              {format(Date.now(), 'yyyy年M月d日 EEEE', { locale: zhCN })}
+              <span>把时间花在重要的事上</span>
+            </div>
+            <div className="topbar-right">
+              {focus && (
+                <button className="running-pill" onClick={() => setTab('focus')}>
+                  <span className="pulse" /> 专注中 · {Math.floor(focus.elapsedSec / 60)} 分钟
+                </button>
+              )}
+            </div>
+          </header>
+
+          <div className="content">
+            {tab === 'focus' && <FocusPage onToast={setToast} onGoSchedule={() => setTab('schedule')} />}
+            {tab === 'schedule' && <SchedulePage onToast={setToast} />}
+            {tab === 'todo' && <TodoPage onToast={setToast} />}
+            {tab === 'stats' && <StatsPage />}
+            {tab === 'settings' && <SettingsPage onToast={setToast} />}
+          </div>
+        </div>
+      </div>
+
+      {projModal && (
+        <Modal title="新建项目" onClose={() => setProjModal(false)} footer={
+          <>
+            <button className="btn ghost" onClick={() => setProjModal(false)}>取消</button>
+            <button className="btn" onClick={createProject}>创建</button>
+          </>
+        }>
+          <div className="field" style={{ marginBottom: 16 }}>
+            <label>项目名称</label>
+            <input className="input" autoFocus value={projName} placeholder="例如：产品设计" onChange={(e) => setProjName(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>颜色</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {COLORS.map((c) => (
+                <button key={c} onClick={() => setProjColor(c)}
+                  style={{ width: 28, height: 28, borderRadius: '50%', background: c,
+                    border: projColor === c ? '2px solid #fff' : '2px solid transparent',
+                    boxShadow: projColor === c ? '0 0 0 2px var(--accent-strong)' : '0 0 0 1px rgba(255,255,255,.1)' }} />
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
