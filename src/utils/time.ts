@@ -44,7 +44,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
 }
 
 export const CATEGORY_COLOR: Record<string, string> = {
-  focus: '#5b6ef5',
+  focus: '#22d3ee',
   meeting: '#f2994a',
   admin: '#9b9faa',
   learning: '#27ae60',

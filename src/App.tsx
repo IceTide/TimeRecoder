@@ -13,7 +13,7 @@ import SettingsPage from './pages/SettingsPage'
 
 type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'settings'
 
-const COLORS = ['#5b6ef5', '#27ae60', '#f2994a', '#bb6bd9', '#e05a5a', '#00a8a8']
+const COLORS = ['#22d3ee', '#34d399', '#f5a524', '#a78bfa', '#f87171', '#38bdf8']
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('focus')
@@ -159,6 +159,7 @@ export default function App() {
               <span>把时间花在重要的事上</span>
             </div>
             <div className="topbar-right">
+              <div className="sys-tag"><span className="led" />SYS · ONLINE</div>
               {autoEnabled && !focus && (
                 <button className="auto-pill" onClick={() => setTab('settings')} title="自动追踪进行中，点击设置查看">
                   <span className={`auto-dot ${autoCurrent ? 'live' : ''}`} />

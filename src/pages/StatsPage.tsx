@@ -11,13 +11,13 @@ type Range = 'today' | 'week' | 'month'
 
 const CATS: TimeCategory[] = ['focus', 'meeting', 'admin', 'learning', 'other']
 
-/* 深色背景下的图表配色：比浅色态更鲜亮，保证对比度 */
+/* 科技青紫图表配色：高饱和霓虹色，深色背景下清晰醒目 */
 const CHART_COLOR: Record<string, string> = {
-  focus: '#7b8cff',
-  meeting: '#f5a524',
-  admin: '#9aa0ac',
-  learning: '#34d399',
-  other: '#c084fc',
+  focus: '#22d3ee',   // 霓虹青
+  meeting: '#f5a524', // 琥珀
+  admin: '#7a8fa0',   // 冷灰蓝
+  learning: '#a78bfa',// 亮紫
+  other: '#34d399',   // 翠绿
 }
 
 /* Recharts 深色 Tooltip 统一样式 */
@@ -147,11 +147,11 @@ export default function StatsPage() {
               <BarChart data={byDay}>
                 <defs>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#9a6bff" />
-                    <stop offset="100%" stopColor="#5b6ef5" />
+                    <stop offset="0%" stopColor="#22d3ee" />
+                    <stop offset="100%" stopColor="#8b6bff" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,.08)" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(34,211,238,.09)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#8b93a5' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#8b93a5' }} axisLine={false} tickLine={false} />
                 <Tooltip
