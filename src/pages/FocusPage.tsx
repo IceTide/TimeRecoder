@@ -10,15 +10,19 @@ interface Props {
 }
 
 const DEFAULT_PRESETS = [25, 50, 90]
+const DEFAULT_DAILY_GOAL_MIN = 120
 
 export default function FocusPage({ onToast, onGoSchedule }: Props) {
   const { tasks, projects, focus, startFocus, pauseFocus, resumeFocus, finishFocus, entries, sessions } = useStore()
   const [preset, setPreset] = useState(25)
   const [taskId, setTaskId] = useState<number | undefined>()
   const [presets, setPresets] = useState(DEFAULT_PRESETS)
+  const [dailyGoalMin, setDailyGoalMin] = useState(DEFAULT_DAILY_GOAL_MIN)
 
   useEffect(() => {
     getSetting<number[]>('focusPresets', DEFAULT_PRESETS).then(setPresets)
+    getSetting<number>('dailyFocusGoalMin', DEFAULT_DAILY_GOAL_MIN)
+      .then((v) => setDailyGoalMin(Math.min(1440, Math.max(10, Number(v) || DEFAULT_DAILY_GOAL_MIN))))
   }, [])
   useEffect(() => { if (presets.length && !presets.includes(preset)) setPreset(presets[0]) }, [presets, preset])
 
@@ -30,11 +34,19 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
   const todaySessions = sessions.filter((s) => s.startAt >= todayStart && s.status === 'completed').length
   const selectedTask = tasks.find((t) => t.id === taskId)
 
+  // 今日专注目标：已累计 / 每日目标（目标来自设置，默认 120 分钟）
+  const todayFocusMin = Math.round(todayFocusSec / 60)
+  const goalSec = Math.max(1, dailyGoalMin) * 60
+  const goalProgress = Math.min(1, todayFocusSec / goalSec)
+  const goalPct = Math.round(goalProgress * 100)
+
   const totalSec = focus ? focus.plannedMin * 60 : preset * 60
   const remainSec = focus ? Math.max(0, totalSec - focus.elapsedSec) : totalSec
   const progress = focus ? Math.min(1, focus.elapsedSec / totalSec) : 0
   const R = 112
   const C = 2 * Math.PI * R
+  const arcTipX = 130 + R * Math.cos(progress * 2 * Math.PI)
+  const arcTipY = 130 + R * Math.sin(progress * 2 * Math.PI)
 
   const handleStart = async () => {
     await startFocus(preset, taskId)
@@ -59,21 +71,37 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
         <div className="card focus-hero">
           <div className="ring">
             <svg width="260" height="260" viewBox="0 0 260 260">
-              {/* 精密刻度盘：细密刻度 + 四方位标记 */}
-              <circle cx="130" cy="130" r="124" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
-              <circle cx="130" cy="130" r="124" fill="none" stroke="rgba(160,172,182,.32)" strokeWidth="6"
-                strokeDasharray="0.8 12.2" />
+              {/* 多层精密刻度盘 */}
+              <circle cx="130" cy="130" r="126" fill="none" stroke="var(--border-faint)" strokeWidth="1" />
+              <circle cx="130" cy="130" r="126" fill="none" stroke="var(--accent-line)" strokeWidth="5"
+                strokeDasharray="0.6 13.2" />
+              <circle cx="130" cy="130" r="96" fill="none" stroke="var(--border)" strokeWidth="1"
+                strokeDasharray="1 19" />
+              {/* 四方位主刻度：冰青长刻度 */}
               {[0, 90, 180, 270].map((deg) => (
-                <line key={deg} x1="130" y1="4" x2="130" y2="12"
+                <line key={deg} x1="130" y1="2" x2="130" y2="14"
                   stroke="var(--accent)" strokeWidth="1.5"
                   transform={`rotate(${deg} 130 130)`} />
               ))}
-              {/* 主轨道（凹槽）+ 琥珀进度弧 */}
+              {/* 中心十字准星：分段淡线 */}
+              <g stroke="var(--accent-line)" strokeWidth="1" strokeDasharray="3 7" opacity="0.45">
+                <line x1="130" y1="58" x2="130" y2="94" />
+                <line x1="130" y1="166" x2="130" y2="202" />
+                <line x1="58" y1="130" x2="94" y2="130" />
+                <line x1="166" y1="130" x2="202" y2="130" />
+              </g>
+              {/* 主轨道：凹槽 + 细描边 */}
               <circle cx="130" cy="130" r={R} fill="none" stroke="var(--bg-deep)" strokeWidth="9" />
               <circle cx="130" cy="130" r={R} fill="none" stroke="var(--border)" strokeWidth="1" />
-              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--accent)" strokeWidth="9"
+              {/* 冰青冷光弧：精确小范围辉光，不糊 */}
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--accent)" strokeWidth="8"
                 strokeLinecap="butt" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
-                style={{ transition: 'stroke-dashoffset .5s linear' }} />
+                style={{ transition: 'stroke-dashoffset .5s linear', filter: 'drop-shadow(0 0 6px var(--accent-glow))' }} />
+              {/* 弧端点光点 */}
+              {progress > 0.001 && (
+                <circle cx={arcTipX} cy={arcTipY} r="3.5" fill="var(--accent)"
+                  style={{ filter: 'drop-shadow(0 0 6px var(--accent-glow))', transition: 'cx .5s linear, cy .5s linear' }} />
+              )}
             </svg>
             <div className="ring-center">
               <div className="ring-time">{fmtClock(remainSec)}</div>
@@ -140,9 +168,24 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
 
           <div className="card card-pad">
             <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Timer size={15} /> 今日概览
+              <Timer size={15} style={{ color: 'var(--accent)' }} /> 今日概览
             </div>
-            <div style={{ marginTop: 12 }}>
+            {/* 今日专注目标：HUD 数据条 */}
+            <div className="goal-block">
+              <div className="goal-head">
+                <span className="goal-label">今日专注目标 / DAILY GOAL</span>
+                <span className="goal-pct">{goalPct}%</span>
+              </div>
+              <div className="goal-track">
+                <div className="goal-fill" style={{ width: `${goalProgress * 100}%` }} />
+                <div className="goal-tip" style={{ left: `${goalProgress * 100}%` }} />
+              </div>
+              <div className="goal-readout">
+                <span className="goal-now"><em>{todayFocusMin}</em> / {dailyGoalMin} 分钟</span>
+                <span className="goal-target">{todayFocusMin >= dailyGoalMin ? '已达成 · 保持' : '继续专注'}</span>
+              </div>
+            </div>
+            <div>
               <div className="stat-mini"><span>专注时长</span><span style={{ color: 'var(--accent)' }}>{fmtDuration(todayFocusSec)}</span></div>
               <div className="stat-mini"><span>完成专注</span><span>{todaySessions} 次</span></div>
               <div className="stat-mini"><span>待办剩余</span><span>{tasks.filter((t) => t.status !== 'done').length} 项</span></div>

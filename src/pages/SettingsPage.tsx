@@ -17,6 +17,7 @@ export default function SettingsPage({ onToast }: Props) {
   } = useStore()
   const [presets, setPresets] = useState<number[]>([25, 50, 90])
   const [breakMin, setBreakMin] = useState(45)
+  const [dailyGoalMin, setDailyGoalMin] = useState(120)
   const [version, setVersion] = useState('')
   const [isWin, setIsWin] = useState(true)
   const [draftRules, setDraftRules] = useState<ClassifyRule[]>(autoRules)
@@ -26,6 +27,8 @@ export default function SettingsPage({ onToast }: Props) {
   useEffect(() => {
     getSetting<number[]>('focusPresets', [25, 50, 90]).then(setPresets)
     getSetting<number>('breakReminderMin', 45).then(setBreakMin)
+    getSetting<number>('dailyFocusGoalMin', 120)
+      .then((v) => setDailyGoalMin(Math.min(1440, Math.max(10, Number(v) || 120))))
     window.electronAPI?.getVersion?.().then(setVersion)
     // 粗略判断平台：仅 Windows 支持活动窗口自动追踪
     setIsWin(/win/i.test(navigator.platform || navigator.userAgent))
@@ -38,6 +41,7 @@ export default function SettingsPage({ onToast }: Props) {
     if (!valid.length) return
     await setSetting('focusPresets', valid)
     await setSetting('breakReminderMin', breakMin)
+    await setSetting('dailyFocusGoalMin', Math.min(1440, Math.max(10, Number(dailyGoalMin) || 120)))
     onToast('设置已保存')
   }
 
@@ -182,6 +186,12 @@ export default function SettingsPage({ onToast }: Props) {
         <div className="field" style={{ marginBottom: 18 }}>
           <label>久坐提醒间隔（分钟）</label>
           <input className="input" type="number" min="10" max="180" value={breakMin} onChange={(e) => setBreakMin(Number(e.target.value))} />
+        </div>
+        <div className="field" style={{ marginBottom: 18 }}>
+          <label>每日专注目标（分钟）</label>
+          <input className="input" type="number" min="10" max="1440" value={dailyGoalMin}
+            onChange={(e) => setDailyGoalMin(Number(e.target.value))} />
+          <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>专注页「今日目标」进度按此目标计算</span>
         </div>
         <button className="btn" onClick={save}><Save size={15} style={{ marginRight: 6 }} />保存设置</button>
       </div>

@@ -12,7 +12,7 @@ type Range = 'today' | 'week' | 'month'
 
 const CATS: TimeCategory[] = ['focus', 'meeting', 'admin', 'learning', 'other']
 
-/* 数据分类色：由设计 token 驱动（专注=琥珀强调，其余冷灰辅助色） */
+/* 数据分类色：由设计 token 驱动（专注=冰青强调，其余冷色辅助色） */
 const CHART_COLOR: Record<string, string> = {
   focus: 'var(--cat-focus)',
   meeting: 'var(--cat-meeting)',
@@ -228,7 +228,7 @@ export default function StatsPage() {
                   contentStyle={TOOLTIP_STYLE}
                   itemStyle={{ color: 'var(--text)' }}
                   labelStyle={{ color: 'var(--text-faint)' }}
-                  cursor={{ fill: 'rgba(255,255,255,.04)' }}
+                  cursor={{ fill: 'oklch(82% 0.14 195 / .06)' }}
                 />
                 <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} maxBarSize={42} />
               </BarChart>
