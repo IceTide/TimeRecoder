@@ -3,6 +3,7 @@ import { Play, Pause, Square, Timer, CheckCircle2, Coffee, Target } from 'lucide
 import { useStore } from '../store/useStore'
 import { fmtClock, fmtDuration, fmtDate } from '../utils/time'
 import { getSetting } from '../db/database'
+import SoundscapeCard from '../components/SoundscapeCard'
 
 interface Props {
   onToast: (msg: string) => void
@@ -165,6 +166,8 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
               </div>
             )}
           </div>
+
+          <SoundscapeCard onToast={onToast} />
 
           <div className="card card-pad">
             <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
