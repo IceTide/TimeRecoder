@@ -9,33 +9,18 @@ import {
   FileText, FileType, Image as ImageIcon, Loader2, Minus, Target,
   TrendingDown, TrendingUp,
 } from 'lucide-react'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import EmptyState from '../components/EmptyState'
 import { getSetting } from '../db/database'
 import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
+import {
+  colorOf, exportReport, tokenToHex, type ExportKind,
+} from '../utils/reportExport'
 import { CATEGORY_LABEL, fmtDate, fmtDuration } from '../utils/time'
-
-type ExportKind = 'markdown' | 'png' | 'pdf'
 
 const CATS: TimeCategory[] = ['focus', 'meeting', 'admin', 'learning', 'other']
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const DEFAULT_GOAL_MIN = 120
-const CAPTURE_BG = '#262a31'
-
-/** 旧内核无法解析 oklch 时，token → 色的兜底值（与 index.css 的 oklch 色板等效） */
-const TOKEN_FALLBACK: Record<string, string> = {
-  '--accent': '#a8d8dc',
-  '--accent-dim': '#8bb9bd',
-  '--accent-deep': '#5d8189',
-  '--amber': '#d9c08a',
-  '--cat-focus': '#a8d8dc',
-  '--cat-meeting': '#a0aedb',
-  '--cat-admin': '#989ca4',
-  '--cat-learning': '#a8d4bd',
-  '--cat-other': '#c2a4d0',
-}
 
 /* Recharts Tooltip：与 StatsPage 一致的仪器面板风格 */
 const TOOLTIP_STYLE: CSSProperties = {
@@ -48,121 +33,6 @@ const TOOLTIP_STYLE: CSSProperties = {
   boxShadow: '0 8px 24px oklch(0% 0 0 / .4)',
 }
 
-/**
- * 把设计 token（如 var(--cat-focus) → oklch(...)）解析为 hex。
- * 目的：1) SVG 图表在 html2canvas 截图时颜色可正确还原；2) 不硬编码色值，仍由 token 驱动。
- */
-function tokenToHex(value: string, fallback: string): string {
-  const input = value.trim()
-  if (!input) return fallback
-  if (/^#[0-9a-f]{3,8}$/i.test(input)) return input
-  let raw = input
-  const varMatch = /^var\(\s*(--[\w-]+)\s*\)$/.exec(input)
-  if (varMatch) {
-    raw = getComputedStyle(document.documentElement).getPropertyValue(varMatch[1]).trim()
-    if (!raw) return fallback
-  }
-  try {
-    const probe = document.createElement('canvas')
-    probe.width = 1
-    probe.height = 1
-    const ctx = probe.getContext('2d')
-    if (!ctx) return fallback
-    ctx.fillStyle = raw
-    ctx.fillRect(0, 0, 1, 1)
-    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-    const hex = `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
-    // 内核不支持 oklch 时 fillStyle 保持默认黑色，此时回退，避免整张图表变黑
-    if (/^(oklch|lch|lab|color\()/i.test(raw) && r === 0 && g === 0 && b === 0) return fallback
-    return hex
-  } catch {
-    return fallback
-  }
-}
-
-function colorOf(token: string): string {
-  return tokenToHex(`var(${token})`, TOKEN_FALLBACK[token] ?? TOKEN_FALLBACK['--accent'])
-}
-
-/** html2canvas 不解析 oklch：截图时把全部设计 token 降为等效 hex / rgba */
-const CAPTURE_TOKENS: Record<string, string> = {
-  '--bg': '#262a31',
-  '--surface-1': '#30343c',
-  '--surface-2': '#393d45',
-  '--surface-3': '#43474f',
-  '--bg-deep': '#1e2228',
-  '--text': '#eef0f2',
-  '--text-sub': '#c8ccd0',
-  '--text-faint': '#9aa0a6',
-  '--text-mute': '#80868c',
-  '--border': '#484d56',
-  '--border-soft': '#3b3f47',
-  '--border-faint': '#34383f',
-  '--accent': '#a8d8dc',
-  '--accent-dim': '#8bb9bd',
-  '--accent-deep': '#5d8189',
-  '--accent-soft': 'rgba(168, 216, 220, 0.10)',
-  '--accent-line': 'rgba(168, 216, 220, 0.26)',
-  '--accent-glow': 'rgba(168, 216, 220, 0.22)',
-  '--accent-wash': 'rgba(168, 216, 220, 0.05)',
-  '--accent-halo': 'rgba(168, 216, 220, 0.07)',
-  '--grid': 'rgba(168, 216, 220, 0.015)',
-  '--cat-focus': '#a8d8dc',
-  '--cat-meeting': '#a0aedb',
-  '--cat-admin': '#989ca4',
-  '--cat-learning': '#a8d4bd',
-  '--cat-other': '#c2a4d0',
-  '--violet': '#c2a4d0',
-  '--green': '#a8d4bd',
-  '--amber': '#d9c08a',
-  '--orange': '#d9b08a',
-  '--red': '#d99a95',
-  '--blue': '#a0aedb',
-  '--shadow': '0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 30px rgba(0, 0, 0, 0.26)',
-  '--shadow-soft': 'inset 0 1px 0 rgba(238, 240, 242, 0.022)',
-}
-
-/**
- * 在 html2canvas 的克隆文档里消除 oklch，不污染真实 DOM。
- *
- * 关键点：html2canvas 的 parseBackgroundColor 会额外读取克隆文档 <html>/<body> 的
- * background-color（它们继承 :root 的 oklch），即使只截报告节点也会崩溃；
- * 这正是 "Attempting to parse an unsupported color function oklch" 的来源。
- * onclone 在 parseBackgroundColor / parseTree 之前执行，是唯一可靠的干预点。
- */
-function sanitizeCloneForCapture(clonedDoc: Document, clonedRoot: HTMLElement): void {
-  // 1) 直接给克隆文档的 html / body 上 hex 背景，修掉 parseBackgroundColor 的崩溃点
-  clonedDoc.documentElement.style.setProperty('background-color', CAPTURE_BG, 'important')
-  clonedDoc.body.style.setProperty('background-color', CAPTURE_BG, 'important')
-
-  // 2) 全文档 token 降级为 hex；!important 可压过 focus-mode 等局部 oklch 定义
-  const tokenRules = Object.entries(CAPTURE_TOKENS)
-    .map(([key, value]) => `${key}: ${value} !important;`)
-    .join('\n')
-  const style = clonedDoc.createElement('style')
-  style.textContent = `
-    html, html * { ${tokenRules} }
-    html .card, html .stat-card { background: ${CAPTURE_TOKENS['--surface-1']} !important; }
-    html .recharts-tooltip-wrapper { display: none !important; }
-  `
-  clonedDoc.head.appendChild(style)
-
-  // 3) 兜底：清理 oklch 内联样式；并把 SVG 的 var(--token) 属性改成 hex 字面量
-  //    （Recharts 用 fill/stroke="var(--...)" 绘图，序列化为图片时变量可能丢失）
-  clonedRoot.querySelectorAll<Element>('*').forEach((element) => {
-    const inline = element.getAttribute('style')
-    if (inline && /oklch\(/i.test(inline)) {
-      const sanitized = inline.replace(/oklch\([^)]*\)/gi, (match) => tokenToHex(match, CAPTURE_TOKENS['--accent']))
-      element.setAttribute('style', sanitized)
-    }
-    Array.from(element.attributes).forEach((attribute) => {
-      const tokenMatch = /^var\(\s*(--[\w-]+)\s*\)$/.exec(attribute.value.trim())
-      const hex = tokenMatch ? CAPTURE_TOKENS[tokenMatch[1]] : undefined
-      if (hex) element.setAttribute(attribute.name, hex)
-    })
-  })
-}
-
 /** 安全求和：过滤非法/负值，避免 NaN 与脏数据影响聚合 */
 function sumSec(list: TimeEntry[]): number {
   return list.reduce((total, entry) => {
@@ -173,19 +43,6 @@ function sumSec(list: TimeEntry[]): number {
 
 function pct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0
-}
-
-/** 通用 Blob 下载（Markdown / PNG 共用） */
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  // 立即 revoke 在部分内核会中断下载，延迟释放
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
 interface DayBucket {
@@ -406,34 +263,12 @@ export default function ReportsPage({ onToast }: Props) {
     }
     setExporting(kind)
     try {
-      if (kind === 'markdown') {
-        downloadBlob(new Blob([`\uFEFF${buildMarkdown()}`], { type: 'text/markdown;charset=utf-8' }), `周报_${fileSlug}.md`)
-      } else {
-        const node = reportRef.current
-        if (!node) throw new Error('报告内容节点不存在')
-        // 在 html2canvas 的克隆文档上批量替换 oklch；真实 DOM 不受影响，也无颜色闪烁
-        const canvas = await html2canvas(node, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: CAPTURE_BG,
-          onclone: sanitizeCloneForCapture,
-        })
-        if (kind === 'png') {
-          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-          if (!blob) throw new Error('PNG 编码失败')
-          downloadBlob(blob, `周报_${fileSlug}.png`)
-        } else {
-          const pdf = new jsPDF({
-            orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
-            unit: 'px',
-            format: [canvas.width, canvas.height],
-            compress: true,
-          })
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height)
-          pdf.save(`周报_${fileSlug}.pdf`)
-        }
-      }
+      await exportReport({
+        kind,
+        node: reportRef.current,
+        markdown: buildMarkdown(),
+        fileBase: `周报_${fileSlug}`,
+      })
       onToast(`${kind === 'markdown' ? 'Markdown' : kind.toUpperCase()} 周报导出成功`)
     } catch (error) {
       console.error('[ReportsPage] 导出失败', error)
