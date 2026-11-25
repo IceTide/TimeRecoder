@@ -228,7 +228,7 @@ export default function StatsPage() {
                   contentStyle={TOOLTIP_STYLE}
                   itemStyle={{ color: 'var(--text)' }}
                   labelStyle={{ color: 'var(--text-faint)' }}
-                  cursor={{ fill: 'oklch(82% 0.14 195 / .06)' }}
+                  cursor={{ fill: 'var(--accent-wash)' }}
                 />
                 <Bar dataKey="分钟" fill="url(#barGradient)" radius={[6, 6, 0, 0]} maxBarSize={42} />
               </BarChart>

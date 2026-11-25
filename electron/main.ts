@@ -18,7 +18,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     title: 'TimeRecoder',
-    backgroundColor: '#01040d', // 与未来科技感深空冷蓝黑主题一致，避免启动时白闪
+    backgroundColor: '#091017', // 与柔和深空冷蓝主题一致，避免启动时白闪
     darkTheme: true, // Windows/Linux 使用深色系统标题栏
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

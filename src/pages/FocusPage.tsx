@@ -71,36 +71,36 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
         <div className="card focus-hero">
           <div className="ring">
             <svg width="260" height="260" viewBox="0 0 260 260">
-              {/* 多层精密刻度盘 */}
+              {/* 双层刻度盘：圆头短刻 + 稀疏分段，保留仪器感但不再密集锐利 */}
               <circle cx="130" cy="130" r="126" fill="none" stroke="var(--border-faint)" strokeWidth="1" />
-              <circle cx="130" cy="130" r="126" fill="none" stroke="var(--accent-line)" strokeWidth="5"
-                strokeDasharray="0.6 13.2" />
-              <circle cx="130" cy="130" r="96" fill="none" stroke="var(--border)" strokeWidth="1"
-                strokeDasharray="1 19" />
-              {/* 四方位主刻度：冰青长刻度 */}
+              <circle cx="130" cy="130" r="126" fill="none" stroke="var(--border)" strokeWidth="2"
+                strokeLinecap="round" strokeDasharray="1 26" />
+              <circle cx="130" cy="130" r="96" fill="none" stroke="var(--border-faint)" strokeWidth="1"
+                strokeLinecap="round" strokeDasharray="1 30" />
+              {/* 四方位主刻度：柔化冷光短线 */}
               {[0, 90, 180, 270].map((deg) => (
-                <line key={deg} x1="130" y1="2" x2="130" y2="14"
-                  stroke="var(--accent)" strokeWidth="1.5"
+                <line key={deg} x1="130" y1="4" x2="130" y2="12"
+                  stroke="var(--accent-line)" strokeWidth="1.5" strokeLinecap="round"
                   transform={`rotate(${deg} 130 130)`} />
               ))}
-              {/* 中心十字准星：分段淡线 */}
-              <g stroke="var(--accent-line)" strokeWidth="1" strokeDasharray="3 7" opacity="0.45">
+              {/* 中心十字准星：更淡、更稀疏的分段线 */}
+              <g stroke="var(--border)" strokeWidth="1" strokeDasharray="2 10" opacity="0.5">
                 <line x1="130" y1="58" x2="130" y2="94" />
                 <line x1="130" y1="166" x2="130" y2="202" />
                 <line x1="58" y1="130" x2="94" y2="130" />
                 <line x1="166" y1="130" x2="202" y2="130" />
               </g>
-              {/* 主轨道：凹槽 + 细描边 */}
+              {/* 主轨道：凹槽 + 柔化描边 */}
               <circle cx="130" cy="130" r={R} fill="none" stroke="var(--bg-deep)" strokeWidth="9" />
-              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--border)" strokeWidth="1" />
-              {/* 冰青冷光弧：精确小范围辉光，不糊 */}
-              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--accent)" strokeWidth="8"
-                strokeLinecap="butt" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
-                style={{ transition: 'stroke-dashoffset .5s linear', filter: 'drop-shadow(0 0 6px var(--accent-glow))' }} />
-              {/* 弧端点光点 */}
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--border-faint)" strokeWidth="1" />
+              {/* 低饱和冷光弧：圆头端点 + 漫射微光，不产生锐利端点 */}
+              <circle cx="130" cy="130" r={R} fill="none" stroke="var(--accent)" strokeWidth="7"
+                strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
+                style={{ transition: 'stroke-dashoffset .5s linear', filter: 'drop-shadow(0 0 5px var(--accent-soft))' }} />
+              {/* 弧端点光点：弱化，仅作柔和收尾 */}
               {progress > 0.001 && (
-                <circle cx={arcTipX} cy={arcTipY} r="3.5" fill="var(--accent)"
-                  style={{ filter: 'drop-shadow(0 0 6px var(--accent-glow))', transition: 'cx .5s linear, cy .5s linear' }} />
+                <circle cx={arcTipX} cy={arcTipY} r="3" fill="var(--accent)" opacity="0.85"
+                  style={{ filter: 'drop-shadow(0 0 5px var(--accent-soft))', transition: 'cx .5s linear, cy .5s linear' }} />
               )}
             </svg>
             <div className="ring-center">
