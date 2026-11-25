@@ -56,7 +56,7 @@ TimeRecoder 是一个对标 [Rize](https://rize.io/) 的**本地优先（local-f
 
 ```bash
 # 克隆仓库
-git clone https://github.com/<your-username>/TimeRecoder.git
+git clone https://github.com/IceTide/TimeRecoder.git
 cd TimeRecoder
 
 # 安装依赖
@@ -65,8 +65,6 @@ npm install
 # 开发模式（同时启动 Vite + Electron）
 npm run dev
 ```
-
-> 创建自己的仓库后，请把上面的 `<your-username>` 替换为你的 GitHub 用户名。
 
 ### 构建与打包
 

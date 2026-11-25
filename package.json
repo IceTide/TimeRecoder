@@ -14,13 +14,13 @@
     "local-first",
     "time-management"
   ],
-  "homepage": "https://github.com/<your-username>/TimeRecoder#readme",
+  "homepage": "https://github.com/IceTide/TimeRecoder#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<your-username>/TimeRecoder.git"
+    "url": "git+https://github.com/IceTide/TimeRecoder.git"
   },
   "bugs": {
-    "url": "https://github.com/<your-username>/TimeRecoder/issues"
+    "url": "https://github.com/IceTide/TimeRecoder/issues"
   },
   "main": "dist-electron/main.js",
   "scripts": {
