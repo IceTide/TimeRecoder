@@ -885,3 +885,58 @@ select option { background: var(--surface-2); color: var(--text); }
   .client-filters { flex-direction: column; align-items: stretch; }
   .client-filters .field { width: 100% !important; flex: none !important; }
 }
+
+/* ============================================================
+   专注守护 (Focus Guard)
+   ============================================================ */
+.guard-section {
+  margin: 6px 0 20px; padding: 16px;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-card);
+  background: var(--bg-deep);
+}
+.guard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.guard-head-title { display: flex; align-items: flex-start; gap: 9px; }
+.guard-title { font-size: var(--fs-sm); font-weight: 500; }
+.guard-sub { font-size: var(--fs-xs); color: var(--text-faint); margin-top: 4px; line-height: 1.5; }
+.guard-interval {
+  display: flex; align-items: center; gap: 12px; margin-top: 16px;
+  font-size: var(--fs-xs); color: var(--text-sub);
+}
+.guard-interval .input { width: 90px; }
+.guard-rules { margin-top: 16px; }
+.guard-rules-label {
+  font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: 9px;
+  font-family: var(--font-mono); letter-spacing: .5px;
+}
+.guard-empty { font-size: var(--fs-xs); color: var(--text-mute); padding: 8px 0; }
+.guard-rule-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid var(--border-faint); border-radius: var(--radius-sm);
+  background: var(--surface-1); font-size: var(--fs-xs);
+}
+.guard-rule-row input[type='checkbox'] { accent-color: var(--accent); }
+.guard-kw { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guard-scope {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-faint);
+  padding: 3px 7px; border: 1px solid var(--border-faint); border-radius: var(--radius-pill);
+}
+.guard-del {
+  border: none; background: transparent; color: var(--text-mute);
+  display: grid; place-items: center; padding: 4px;
+}
+.guard-del:hover { color: var(--red); }
+.guard-rules .rule-add { display: flex; gap: 8px; margin-top: 10px; }
+.guard-rules .rule-add .input { flex: 1; }
+.guard-rules .rule-add .select { width: 110px; flex-shrink: 0; }
+.guard-rules .rule-add .btn { flex-shrink: 0; }
+
+.focus-guard-alert {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  margin-top: 12px; padding: 8px 14px;
+  font-size: var(--fs-xs); color: var(--amber);
+  background: color-mix(in oklch, var(--amber) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--amber) 26%, transparent);
+  border-radius: var(--radius-sm);
+}
+.focus-guard-alert span { color: var(--text-faint); }

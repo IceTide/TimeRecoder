@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Download, Upload, Info, Save, Activity, Plus, Trash2 } from 'lucide-react'
+import { Download, Upload, Info, Save, Activity, Plus, Trash2, ShieldCheck } from 'lucide-react'
 import { getSetting, setSetting, exportBackup, importBackup, validateBackup } from '../db/database'
 import { useStore } from '../store/useStore'
 import { makeRuleId } from '../utils/classify'
+import {
+  DEFAULT_BLOCK_RULES, DEFAULT_GUARD_INTERVAL_SEC, blockRuleKey, sanitizeBlockRules,
+  type BlockRule,
+} from '../utils/focusGuard'
 import type { ClassifyRule, TimeCategory } from '../types'
 import { CATEGORY_LABEL } from '../utils/time'
 
@@ -23,12 +27,22 @@ export default function SettingsPage({ onToast }: Props) {
   const [draftRules, setDraftRules] = useState<ClassifyRule[]>(autoRules)
   const [newKw, setNewKw] = useState('')
   const [newCat, setNewCat] = useState<TimeCategory>('focus')
+  const [guardEnabled, setGuardEnabled] = useState(false)
+  const [guardInterval, setGuardInterval] = useState(DEFAULT_GUARD_INTERVAL_SEC)
+  const [blockRules, setBlockRules] = useState<BlockRule[]>(DEFAULT_BLOCK_RULES)
+  const [newBlockKw, setNewBlockKw] = useState('')
+  const [newBlockScope, setNewBlockScope] = useState<BlockRule['scope']>('title')
 
   useEffect(() => {
     getSetting<number[]>('focusPresets', [25, 50, 90]).then(setPresets)
     getSetting<number>('breakReminderMin', 45).then(setBreakMin)
     getSetting<number>('dailyFocusGoalMin', 120)
       .then((v) => setDailyGoalMin(Math.min(1440, Math.max(10, Number(v) || 120))))
+    getSetting<boolean>('focusGuardEnabled', false).then((v) => setGuardEnabled(v === true))
+    getSetting<number>('focusGuardIntervalSec', DEFAULT_GUARD_INTERVAL_SEC)
+      .then((v) => setGuardInterval(Math.min(30, Math.max(2, Math.round(Number(v) || DEFAULT_GUARD_INTERVAL_SEC)))))
+    getSetting<BlockRule[]>('focusGuardRules', DEFAULT_BLOCK_RULES)
+      .then((v) => setBlockRules(sanitizeBlockRules(v)))
     window.electronAPI?.getVersion?.().then(setVersion)
     // 粗略判断平台：仅 Windows 支持活动窗口自动追踪
     setIsWin(/win/i.test(navigator.platform || navigator.userAgent))
@@ -42,6 +56,9 @@ export default function SettingsPage({ onToast }: Props) {
     await setSetting('focusPresets', valid)
     await setSetting('breakReminderMin', breakMin)
     await setSetting('dailyFocusGoalMin', Math.min(1440, Math.max(10, Number(dailyGoalMin) || 120)))
+    await setSetting('focusGuardEnabled', guardEnabled)
+    await setSetting('focusGuardIntervalSec', Math.min(30, Math.max(2, Math.round(Number(guardInterval) || DEFAULT_GUARD_INTERVAL_SEC))))
+    await setSetting('focusGuardRules', sanitizeBlockRules(blockRules))
     onToast('设置已保存')
   }
 
@@ -59,6 +76,22 @@ export default function SettingsPage({ onToast }: Props) {
 
   const removeRule = async (id: string) => {
     await setAutoRules(draftRules.filter((r) => r.id !== id))
+  }
+
+  const addBlockRule = () => {
+    const kw = newBlockKw.trim()
+    if (!kw) return
+    const rule: BlockRule = { keyword: kw, scope: newBlockScope, enabled: true }
+    if (blockRules.some((r) => blockRuleKey(r) === blockRuleKey(rule))) {
+      onToast('该规则已存在')
+      return
+    }
+    setBlockRules([...blockRules, rule])
+    setNewBlockKw('')
+  }
+
+  const removeBlockRule = (idx: number) => {
+    setBlockRules(blockRules.filter((_, i) => i !== idx))
   }
 
   const doExport = async () => {
@@ -193,6 +226,59 @@ export default function SettingsPage({ onToast }: Props) {
             onChange={(e) => setDailyGoalMin(Number(e.target.value))} />
           <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>专注页「今日目标」进度按此目标计算</span>
         </div>
+
+        {/* 专注守护：非侵入式干扰提醒 */}
+        <div className="guard-section">
+          <div className="guard-head">
+            <div className="guard-head-title">
+              <ShieldCheck size={16} style={{ color: 'var(--accent)' }} />
+              <div>
+                <div className="guard-title">专注守护</div>
+                <div className="guard-sub">专注时检测干扰窗口，及时提醒你回到任务（不强制拦截）</div>
+              </div>
+            </div>
+            <button className={`switch ${guardEnabled ? 'on' : ''}`}
+              aria-label="专注守护开关" onClick={() => setGuardEnabled(!guardEnabled)}>
+              <span className="switch-knob" />
+            </button>
+          </div>
+
+          <div className="guard-interval">
+            <label>检测间隔（秒）</label>
+            <input className="input" type="number" min="2" max="30" value={guardInterval}
+              onChange={(e) => setGuardInterval(Number(e.target.value))} />
+          </div>
+
+          <div className="guard-rules">
+            <div className="guard-rules-label">屏蔽关键词</div>
+            {blockRules.length === 0 ? (
+              <div className="guard-empty">还没有规则，添加后会开始检测</div>
+            ) : blockRules.map((r, i) => (
+              <div className="guard-rule-row" key={blockRuleKey(r)}>
+                <input type="checkbox" checked={r.enabled}
+                  onChange={(e) => setBlockRules(blockRules.map((x, j) => j === i ? { ...x, enabled: e.target.checked } : x))} />
+                <span className="guard-kw">{r.keyword}</span>
+                <span className="guard-scope">
+                  {r.scope === 'app' ? '进程名' : r.scope === 'title' ? '窗口标题' : '两者'}
+                </span>
+                <button className="guard-del" onClick={() => removeBlockRule(i)} title="删除"><Trash2 size={14} /></button>
+              </div>
+            ))}
+            <div className="rule-add">
+              <input className="input" placeholder="关键词，如 微博 / youtube" value={newBlockKw}
+                onChange={(e) => setNewBlockKw(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addBlockRule() }} />
+              <select className="select" value={newBlockScope}
+                onChange={(e) => setNewBlockScope(e.target.value as BlockRule['scope'])}>
+                <option value="title">窗口标题</option>
+                <option value="app">进程名</option>
+                <option value="both">两者</option>
+              </select>
+              <button className="btn ghost" onClick={addBlockRule}><Plus size={14} /></button>
+            </div>
+          </div>
+        </div>
+
         <button className="btn" onClick={save}><Save size={15} style={{ marginRight: 6 }} />保存设置</button>
       </div>
 

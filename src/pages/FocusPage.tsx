@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Play, Pause, Square, Timer, CheckCircle2, Coffee, Target } from 'lucide-react'
+import { Play, Pause, Square, Timer, CheckCircle2, Coffee, Target, ShieldAlert } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { fmtClock, fmtDuration, fmtDate } from '../utils/time'
 import { getSetting } from '../db/database'
+import { useFocusGuard } from '../hooks/useFocusGuard'
 import SoundscapeCard from '../components/SoundscapeCard'
 
 interface Props {
@@ -48,6 +49,12 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
   const C = 2 * Math.PI * R
   const arcTipX = 130 + R * Math.cos(progress * 2 * Math.PI)
   const arcTipY = 130 + R * Math.sin(progress * 2 * Math.PI)
+
+  // 专注守护：命中屏蔽名单时提醒 + 记数（非侵入，不拦截应用）
+  const guard = useFocusGuard((keyword) => {
+    onToast(`专注守护：检测到「${keyword}」，回到手头的事`)
+    void window.electronAPI?.notify?.('专注守护', `检测到干扰：${keyword}`)
+  })
 
   const handleStart = async () => {
     await startFocus(preset, taskId)
@@ -115,6 +122,13 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
               <Target size={15} />
               {selectedTask ? selectedTask.title : '自由专注'}
               <span style={{ color: 'var(--text-faint)' }}>· 已暂停 {focus.pauseCount} 次</span>
+            </div>
+          )}
+          {guard.distractionCount > 0 && (
+            <div className="focus-guard-alert">
+              <ShieldAlert size={14} />
+              本次专注已检测到 {guard.distractionCount} 次干扰
+              {guard.lastHit && <span>· 最近：{guard.lastHit}</span>}
             </div>
           )}
 
