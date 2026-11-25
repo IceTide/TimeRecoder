@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Settings2 } from 'lucide-react'
+import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Sparkles, Settings2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { useStore } from './store/useStore'
@@ -10,9 +10,10 @@ import SchedulePage from './pages/SchedulePage'
 import TodoPage from './pages/TodoPage'
 import StatsPage from './pages/StatsPage'
 import ReportsPage from './pages/ReportsPage'
+import InsightsPage from './pages/InsightsPage'
 import SettingsPage from './pages/SettingsPage'
 
-type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'reports' | 'settings'
+type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'reports' | 'insights' | 'settings'
 
 const COLORS = ['var(--accent)', 'var(--cat-meeting)', 'var(--cat-learning)', 'var(--cat-other)', 'var(--red)', 'var(--blue)']
 
@@ -143,6 +144,7 @@ export default function App() {
     { id: 'todo' as Tab, label: '待办任务', icon: ListTodo },
     { id: 'stats' as Tab, label: '时间统计', icon: BarChart3 },
     { id: 'reports' as Tab, label: '周报生成', icon: FileBarChart2 },
+    { id: 'insights' as Tab, label: '效率洞察', icon: Sparkles },
   ]
 
   if (!loaded) return <div className="app"><div className="empty" style={{ margin: 'auto' }}>加载中…</div></div>
@@ -223,6 +225,7 @@ export default function App() {
             {tab === 'todo' && <TodoPage onToast={setToast} />}
             {tab === 'stats' && <StatsPage />}
             {tab === 'reports' && <ReportsPage onToast={setToast} />}
+            {tab === 'insights' && <InsightsPage onGoFocus={() => setTab('focus')} />}
             {tab === 'settings' && <SettingsPage onToast={setToast} />}
           </div>
         </div>
