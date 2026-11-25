@@ -3,6 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "description": "本地优先的桌面时间管理应用（对标 Rize）",
+  "author": "Liu Yisong",
+  "license": "Apache-2.0",
+  "keywords": [
+    "time-tracking",
+    "focus",
+    "pomodoro",
+    "productivity",
+    "electron",
+    "local-first",
+    "time-management"
+  ],
+  "homepage": "https://github.com/<your-username>/TimeRecoder#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<your-username>/TimeRecoder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/<your-username>/TimeRecoder/issues"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
