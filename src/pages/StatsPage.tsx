@@ -6,6 +6,8 @@ import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
+import { useTodayStart } from '../hooks/useTodayStart'
+import { computeFocusStreaks } from '../utils/streak'
 import { CATEGORY_LABEL, fmtDuration, fmtDate, fmtTime, fmtFriendlyDay } from '../utils/time'
 
 type Range = 'today' | 'week' | 'month'
@@ -44,16 +46,17 @@ export default function StatsPage() {
   const { entries, tasks, projects, addEntry, updateEntry, deleteEntry, recordCorrection } = useStore()
   const [range, setRange] = useState<Range>('today')
   const [editing, setEditing] = useState<TimeEntry | null>(null)
+  const todayStart = useTodayStart()
 
   const rangeFrom = useMemo(() => {
-    const now = new Date()
+    const now = new Date(todayStart)
     if (range === 'today') return new Date(now.setHours(0, 0, 0, 0)).getTime()
     if (range === 'week') {
       const d = new Date(); d.setHours(0, 0, 0, 0); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow)
       return d.getTime()
     }
     return new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-  }, [range])
+  }, [range, todayStart])
 
   const scoped = useMemo(() => {
     return entries.filter((e) => e.startAt >= rangeFrom).sort((a, b) => b.startAt - a.startAt)
@@ -63,19 +66,20 @@ export default function StatsPage() {
   const focusSec = scoped.filter((e) => e.category === 'focus').reduce((s, e) => s + e.durationSec, 0)
   const doneTasks = tasks.filter((t) => t.status === 'done' && t.completedAt && t.completedAt >= rangeFrom).length
 
+  // 用原始秒数判断是否入图；不足 30 秒的记录四舍五入后是 0 分钟，但仍属于总时长
   const byCategory = CATS.map((c) => ({
     name: CATEGORY_LABEL[c],
-    value: Math.round(scoped.filter((e) => e.category === c).reduce((s, e) => s + e.durationSec, 0) / 60),
+    sec: scoped.filter((e) => e.category === c).reduce((s, e) => s + e.durationSec, 0),
     color: CHART_COLOR[c],
-  })).filter((d) => d.value > 0)
+  })).filter((d) => d.sec > 0).map((d) => ({ name: d.name, color: d.color, value: Math.round(d.sec / 60) }))
 
   const byProject = projects.map((p) => ({
     name: p.name,
-    value: Math.round(scoped.filter((e) => e.projectId === p.id).reduce((s, e) => s + e.durationSec, 0) / 60),
+    sec: scoped.filter((e) => e.projectId === p.id).reduce((s, e) => s + e.durationSec, 0),
     color: p.color,
-  })).filter((d) => d.value > 0)
-  const untagged = Math.round(scoped.filter((e) => !e.projectId).reduce((s, e) => s + e.durationSec, 0) / 60)
-  if (untagged > 0) byProject.push({ name: '未分类', value: untagged, color: 'var(--cat-admin)' })
+  })).filter((d) => d.sec > 0).map((d) => ({ name: d.name, color: d.color, value: Math.round(d.sec / 60) }))
+  const untaggedSec = scoped.filter((e) => !e.projectId).reduce((s, e) => s + e.durationSec, 0)
+  if (untaggedSec > 0) byProject.push({ name: '未分类', value: Math.round(untaggedSec / 60), color: 'var(--cat-admin)' })
 
   const byDay = useMemo(() => {
     const map = new Map<string, number>()
@@ -102,19 +106,7 @@ export default function StatsPage() {
     return map
   }, [entries])
 
-  // 连续专注天数：今天有记录则从今天起算，否则从昨天起算（今天还没结束不断签）
-  const streak = useMemo(() => {
-    let count = 0
-    let cursor = startOfDay(Date.now())
-    if (!focusByDay.has(fmtDate(cursor.getTime(), 'yyyy-MM-dd'))) {
-      cursor = addDays(cursor, -1)
-    }
-    while (focusByDay.has(fmtDate(cursor.getTime(), 'yyyy-MM-dd'))) {
-      count++
-      cursor = addDays(cursor, -1)
-    }
-    return count
-  }, [focusByDay])
+  const streak = useMemo(() => computeFocusStreaks(focusByDay.keys()), [focusByDay])
 
   // 热力图：最近 12 周（84 天），按列=周、行=周一~周日排列
   const heatmap = useMemo(() => {
@@ -192,7 +184,7 @@ export default function StatsPage() {
       <div className="stat-grid">
         <div className="card stat-card"><div className="k">总记录时长</div><div className="v">{fmtDuration(totalSec)}</div><div className="d">{range === 'today' ? '今日' : range === 'week' ? '本周' : '本月'}累计</div></div>
         <div className="card stat-card"><div className="k">专注时长</div><div className="v" style={{ color: 'var(--accent)' }}>{fmtDuration(focusSec)}</div><div className="d">占比 {totalSec ? Math.round(focusSec / totalSec * 100) : 0}%</div></div>
-        <div className="card stat-card"><div className="k">连续专注</div><div className="v" style={{ color: 'var(--orange)' }}>{streak}<span style={{ fontSize: 14 }}> 天</span></div><div className="d"><Flame size={11} style={{ verticalAlign: -1 }} /> 最长连续记录</div></div>
+        <div className="card stat-card"><div className="k">最长连续专注</div><div className="v" style={{ color: 'var(--orange)' }}>{streak.best}<span style={{ fontSize: 14 }}> 天</span></div><div className="d"><Flame size={11} style={{ verticalAlign: -1 }} /> 当前连续 {streak.current} 天</div></div>
         <div className="card stat-card"><div className="k">本次完成</div><div className="v">{doneTasks}</div><div className="d">任务 · 专注 {totalFocusDays} 天</div></div>
       </div>
 

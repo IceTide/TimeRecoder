@@ -6,6 +6,7 @@ import {
   type ClassifyCorrection, type CorrectionInput, type LearnedRule,
 } from '../utils/smartClassify'
 import { newSubtaskId, nextOccurrence } from '../utils/taskInput'
+import { AUTO_STORAGE_KEY, FOCUS_STORAGE_KEY } from '../utils/storageKeys'
 import type {
   CalendarEvent,
   ClassifyRule,
@@ -16,11 +17,13 @@ import type {
   TimeEntry,
 } from '../types'
 
-const FOCUS_KEY = 'timerecoder.focus'
-const AUTO_KEY = 'timerecoder.auto'
+const FOCUS_KEY = FOCUS_STORAGE_KEY
+const AUTO_KEY = AUTO_STORAGE_KEY
 
 // 防止 1 秒 tick 在异步 finishFocus 完成前重复触发，造成重复记账/重复通知
 let finishing = false
+// 防止托盘/快捷键并发触发 startFocus，在 await 前就占锁
+let starting = false
 // 自动追踪轮询串行化，避免上一次 IPC 未返回时再次结算造成重复段
 let autoPolling = false
 // 退出流程中：停止采集，避免结算后又被在途轮询重新开段
@@ -266,19 +269,24 @@ export const useStore = create<State>((set, get) => ({
   deleteEvent: async (id) => { await repo.deleteEvent(id); await get().loadAll() },
 
   startFocus: async (plannedMin, taskId) => {
-    if (get().focus) return
-    // 开始专注前先结算自动段，避免与专注计时重复记账
-    if (get().autoCurrent) await get().flushAuto()
-    const now = Date.now()
-    const id = await repo.addSession({
-      taskId, plannedMin, startAt: now, pauseCount: 0, status: 'running',
-    })
-    const pf: PersistedFocus = {
-      sessionId: id as number, taskId, plannedMin, startAt: now,
-      accumulatedSec: 0, segmentStartAt: now, pauseCount: 0,
+    if (starting || get().focus) return
+    starting = true
+    try {
+      // 开始专注前先结算自动段，避免与专注计时重复记账
+      if (get().autoCurrent) await get().flushAuto()
+      const now = Date.now()
+      const id = await repo.addSession({
+        taskId, plannedMin, startAt: now, pauseCount: 0, status: 'running',
+      })
+      const pf: PersistedFocus = {
+        sessionId: id as number, taskId, plannedMin, startAt: now,
+        accumulatedSec: 0, segmentStartAt: now, pauseCount: 0,
+      }
+      savePersistedFocus(pf)
+      set({ focus: { ...pf, elapsedSec: 0 }, sessions: await repo.getSessions() })
+    } finally {
+      starting = false
     }
-    savePersistedFocus(pf)
-    set({ focus: { ...pf, elapsedSec: 0 }, sessions: await repo.getSessions() })
   },
 
   pauseFocus: () => {

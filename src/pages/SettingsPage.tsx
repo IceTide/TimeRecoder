@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Upload, Info, Save, Activity, Plus, Trash2, ShieldCheck, Sparkles } from 'lucide-react'
 import { getSetting, setSetting, exportBackup, importBackup, validateBackup } from '../db/database'
 import { useStore } from '../store/useStore'
@@ -37,20 +37,29 @@ export default function SettingsPage({ onToast }: Props) {
   const [newBlockKw, setNewBlockKw] = useState('')
   const [newBlockScope, setNewBlockScope] = useState<BlockRule['scope']>('title')
 
+  const loadLocalSettings = useCallback(async () => {
+    const [savedPresets, savedBreak, savedGoal, savedGuard, savedInterval, savedRules] = await Promise.all([
+      getSetting<number[]>('focusPresets', [25, 50, 90]),
+      getSetting<number>('breakReminderMin', 45),
+      getSetting<number>('dailyFocusGoalMin', 120),
+      getSetting<boolean>('focusGuardEnabled', false),
+      getSetting<number>('focusGuardIntervalSec', DEFAULT_GUARD_INTERVAL_SEC),
+      getSetting<BlockRule[]>('focusGuardRules', DEFAULT_BLOCK_RULES),
+    ])
+    setPresets(savedPresets)
+    setBreakMin(Math.min(180, Math.max(10, Number(savedBreak) || 45)))
+    setDailyGoalMin(Math.min(1440, Math.max(10, Number(savedGoal) || 120)))
+    setGuardEnabled(savedGuard === true)
+    setGuardInterval(Math.min(30, Math.max(2, Math.round(Number(savedInterval) || DEFAULT_GUARD_INTERVAL_SEC))))
+    setBlockRules(sanitizeBlockRules(savedRules))
+  }, [])
+
   useEffect(() => {
-    getSetting<number[]>('focusPresets', [25, 50, 90]).then(setPresets)
-    getSetting<number>('breakReminderMin', 45).then(setBreakMin)
-    getSetting<number>('dailyFocusGoalMin', 120)
-      .then((v) => setDailyGoalMin(Math.min(1440, Math.max(10, Number(v) || 120))))
-    getSetting<boolean>('focusGuardEnabled', false).then((v) => setGuardEnabled(v === true))
-    getSetting<number>('focusGuardIntervalSec', DEFAULT_GUARD_INTERVAL_SEC)
-      .then((v) => setGuardInterval(Math.min(30, Math.max(2, Math.round(Number(v) || DEFAULT_GUARD_INTERVAL_SEC)))))
-    getSetting<BlockRule[]>('focusGuardRules', DEFAULT_BLOCK_RULES)
-      .then((v) => setBlockRules(sanitizeBlockRules(v)))
+    void loadLocalSettings()
     window.electronAPI?.getVersion?.().then(setVersion)
     // 粗略判断平台：仅 Windows 支持活动窗口自动追踪
     setIsWin(/win/i.test(navigator.platform || navigator.userAgent))
-  }, [])
+  }, [loadLocalSettings])
 
   useEffect(() => { setDraftRules(autoRules) }, [autoRules])
 
@@ -68,15 +77,29 @@ export default function SettingsPage({ onToast }: Props) {
   }, [classifyCorrections, dismissedRuleKeys, autoRules])
 
   const save = async () => {
-    const valid = presets.map((n) => Number(n)).filter((n) => n > 0 && n <= 240)
-    if (!valid.length) return
-    await setSetting('focusPresets', valid)
-    await setSetting('breakReminderMin', breakMin)
-    await setSetting('dailyFocusGoalMin', Math.min(1440, Math.max(10, Number(dailyGoalMin) || 120)))
-    await setSetting('focusGuardEnabled', guardEnabled)
-    await setSetting('focusGuardIntervalSec', Math.min(30, Math.max(2, Math.round(Number(guardInterval) || DEFAULT_GUARD_INTERVAL_SEC))))
-    await setSetting('focusGuardRules', sanitizeBlockRules(blockRules))
-    onToast('设置已保存')
+    // 单个字段非法不能阻断其他设置的保存
+    const validPresets = presets.map((n) => Number(n)).filter((n) => n > 0 && n <= 240)
+    if (validPresets.length) {
+      await setSetting('focusPresets', validPresets)
+      setPresets(validPresets)
+    }
+    const safeBreak = Math.min(180, Math.max(10, Math.round(Number(breakMin) || 45)))
+    const safeGoal = Math.min(1440, Math.max(10, Math.round(Number(dailyGoalMin) || 120)))
+    const safeInterval = Math.min(30, Math.max(2, Math.round(Number(guardInterval) || DEFAULT_GUARD_INTERVAL_SEC)))
+    const safeRules = sanitizeBlockRules(blockRules)
+    setBreakMin(safeBreak)
+    setDailyGoalMin(safeGoal)
+    setGuardInterval(safeInterval)
+    setBlockRules(safeRules)
+
+    await Promise.all([
+      setSetting('breakReminderMin', safeBreak),
+      setSetting('dailyFocusGoalMin', safeGoal),
+      setSetting('focusGuardEnabled', guardEnabled),
+      setSetting('focusGuardIntervalSec', safeInterval),
+      setSetting('focusGuardRules', safeRules),
+    ])
+    onToast(validPresets.length ? '设置已保存' : '已保存其他设置；时长预设需至少保留一个有效值')
   }
 
   const addRule = async () => {
@@ -134,6 +157,7 @@ export default function SettingsPage({ onToast }: Props) {
       }
       await importBackup(data)
       await loadAll()
+      await loadLocalSettings()
       onToast('数据已恢复')
     } catch {
       onToast('导入失败：文件解析错误或数据损坏')

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Users, Sparkles, Settings2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { useStore } from './store/useStore'
 import { useObsidianAutoWrite } from './hooks/useObsidianLog'
+import { useTodayStart } from './hooks/useTodayStart'
 import type { Project } from './types'
 import Modal from './components/Modal'
 import FocusPage from './pages/FocusPage'
@@ -19,9 +20,8 @@ type Tab = 'focus' | 'schedule' | 'todo' | 'stats' | 'reports' | 'clients' | 'in
 
 const COLORS = ['var(--accent)', 'var(--cat-meeting)', 'var(--cat-learning)', 'var(--cat-other)', 'var(--red)', 'var(--blue)']
 
-/** 顶栏今日专注读数：从 entries 派生，数据变化时才更新 */
-function FocusTotalTag({ entries }: { entries: { startAt: number; endAt: number; durationSec: number; category: string }[] }) {
-  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }, [entries])
+/** 顶栏今日专注读数：从 entries 派生，跨零点自动切换日期范围 */
+function FocusTotalTag({ entries, todayStart }: { entries: { startAt: number; endAt: number; durationSec: number; category: string }[]; todayStart: number }) {
   const sec = entries
     .filter((e) => e.category === 'focus' && e.startAt >= todayStart)
     .reduce((s, e) => s + e.durationSec, 0)
@@ -56,6 +56,7 @@ function ClockTag() {
 export default function App() {
   const [tab, setTab] = useState<Tab>('focus')
   const [toast, setToast] = useState('')
+  const todayStart = useTodayStart()
   const [projModal, setProjModal] = useState(false)
   const [projName, setProjName] = useState('')
   const [projColor, setProjColor] = useState(COLORS[0])
@@ -204,12 +205,12 @@ export default function App() {
         <div className="main">
           <header className="topbar">
             <div className="today-label">
-              {format(Date.now(), 'yyyy年M月d日 EEEE', { locale: zhCN })}
+              {format(todayStart, 'yyyy年M月d日 EEEE', { locale: zhCN })}
               <span>把时间花在重要的事上</span>
             </div>
             <div className="topbar-right">
               <ClockTag />
-              <FocusTotalTag entries={entries} />
+              <FocusTotalTag entries={entries} todayStart={todayStart} />
               <div className="sys-tag"><span className="led" />SYS · ONLINE</div>
               {autoEnabled && !focus && (
                 <button className="auto-pill" onClick={() => setTab('settings')} title="自动追踪进行中，点击设置查看">

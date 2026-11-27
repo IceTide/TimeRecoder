@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Play, Pause, Square, Timer, CheckCircle2, Coffee, Target, ShieldAlert } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { fmtClock, fmtDuration, fmtDate } from '../utils/time'
 import { getSetting } from '../db/database'
 import { useFocusGuard } from '../hooks/useFocusGuard'
+import { useTodayStart } from '../hooks/useTodayStart'
 import SoundscapeCard from '../components/SoundscapeCard'
 
 interface Props {
@@ -28,9 +29,7 @@ export default function FocusPage({ onToast, onGoSchedule }: Props) {
   }, [])
   useEffect(() => { if (presets.length && !presets.includes(preset)) setPreset(presets[0]) }, [presets, preset])
 
-  const todayStart = useMemo(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime()
-  }, [entries])
+  const todayStart = useTodayStart()
   const todayFocusSec = entries.filter((e) => e.startAt >= todayStart && e.category === 'focus')
     .reduce((s, e) => s + e.durationSec, 0)
   const todaySessions = sessions.filter((s) => s.startAt >= todayStart && s.status === 'completed').length

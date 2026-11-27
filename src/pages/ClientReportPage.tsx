@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState'
 import { useStore } from '../store/useStore'
 import type { TimeCategory, TimeEntry } from '../types'
 import { exportReport, colorOf, type ExportKind } from '../utils/reportExport'
+import { useTodayStart } from '../hooks/useTodayStart'
 import { CATEGORY_LABEL, fmtDate, fmtDuration } from '../utils/time'
 
 type RangeKey = 'thisMonth' | 'lastMonth' | 'last30' | 'all'
@@ -46,12 +47,13 @@ function safePct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0
 }
 
-function rangeBounds(range: RangeKey): { from: number; to: number; label: string } {
-  const now = new Date()
-  const to = now.getTime()
+function rangeBounds(range: RangeKey, todayStart: number): { from: number; to: number; label: string } {
+  const now = new Date(todayStart)
+  // 上界仍取实时时刻；日期边界由 todayStart 驱动，跨零点后自动刷新
+  const to = Date.now()
   if (range === 'all') return { from: 0, to, label: '全部时间' }
   if (range === 'last30') {
-    const from = new Date(now); from.setDate(from.getDate() - 30); from.setHours(0, 0, 0, 0)
+    const from = new Date(now); from.setDate(from.getDate() - 29); from.setHours(0, 0, 0, 0)
     return { from: from.getTime(), to, label: `近 30 天（${fmtDate(from.getTime(), 'M月d日')} — ${fmtDate(to, 'M月d日')}）` }
   }
   if (range === 'thisMonth') {
@@ -71,8 +73,9 @@ export default function ClientReportPage({ onToast }: Props) {
   const [clientName, setClientName] = useState('')
   const [exporting, setExporting] = useState<ExportKind | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
+  const todayStart = useTodayStart()
 
-  const bounds = useMemo(() => rangeBounds(range), [range])
+  const bounds = useMemo(() => rangeBounds(range, todayStart), [range, todayStart])
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),
     [projects, projectId],
@@ -129,7 +132,7 @@ export default function ClientReportPage({ onToast }: Props) {
   ) as Record<TimeCategory, string>, [])
 
   const subject = clientName.trim() || selectedProject?.name || '全部项目'
-  const fileSlug = `${subject.replace(/[\\/:*?"<>|]/g, '_')}_${rangeBounds(range).label.replace(/[^\d年月日\-— ]/g, '').trim() || range}`
+  const fileSlug = `${subject.replace(/[\\/:*?"<>|]/g, '_')}_${bounds.label.replace(/[^\d年月日\-— ]/g, '').trim() || range}`
 
   const markdown = useMemo(() => {
     const lines = [

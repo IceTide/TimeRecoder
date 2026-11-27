@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { AUTO_STORAGE_KEY, FOCUS_STORAGE_KEY } from '../utils/storageKeys'
 import type {
   CalendarEvent,
   FocusSession,
@@ -81,6 +82,22 @@ export const setSetting = (key: string, value: unknown) =>
   db.settings.put({ key, value })
 
 // ---------- 备份 / 恢复 ----------
+/** 运行态仅用于备份留档；恢复时一律清空，避免旧自动段/专注段跨越恢复点续写 */
+function readRuntime() {
+  const read = (key: string) => {
+    try {
+      const raw = localStorage.getItem(key)
+      return raw ? JSON.parse(raw) as unknown : null
+    } catch {
+      return null
+    }
+  }
+  return {
+    autoSegment: read(AUTO_STORAGE_KEY),
+    focusState: read(FOCUS_STORAGE_KEY),
+  }
+}
+
 export async function exportBackup() {
   const [projects, tasks, timeEntries, focusSessions, events, settings] = await Promise.all([
     db.projects.toArray(),
@@ -90,7 +107,10 @@ export async function exportBackup() {
     db.events.toArray(),
     db.settings.toArray(),
   ])
-  return { version: 1, exportedAt: Date.now(), projects, tasks, timeEntries, focusSessions, events, settings }
+  return {
+    version: 1, exportedAt: Date.now(), projects, tasks, timeEntries, focusSessions, events, settings,
+    runtime: readRuntime(),
+  }
 }
 
 /** 校验备份文件结构，避免脏数据覆盖现有数据 */
@@ -98,8 +118,14 @@ export function validateBackup(data: unknown): data is Awaited<ReturnType<typeof
   if (!data || typeof data !== 'object') return false
   const d = data as Record<string, unknown>
   if (d.version !== 1) return false
-  return ['projects', 'tasks', 'timeEntries', 'focusSessions', 'events', 'settings']
-    .every((key) => Array.isArray(d[key]))
+  if (!['projects', 'tasks', 'timeEntries', 'focusSessions', 'events', 'settings']
+    .every((key) => Array.isArray(d[key]))) return false
+  // 时间条目是最容易产生脏数据的表：拒绝 NaN/Infinity，避免统计与导出出现空洞
+  return (d.timeEntries as unknown[]).every((row) => {
+    if (!row || typeof row !== 'object') return false
+    const e = row as Partial<TimeEntry>
+    return Number.isFinite(e.startAt) && Number.isFinite(e.endAt) && Number.isFinite(e.durationSec)
+  })
 }
 
 export async function importBackup(data: unknown) {
@@ -118,4 +144,11 @@ export async function importBackup(data: unknown) {
       db.settings.bulkAdd(data.settings),
     ])
   })
+  // 恢复数据后不恢复半途的运行态：否则旧自动段可能跨越恢复点继续计时
+  try {
+    localStorage.removeItem(AUTO_STORAGE_KEY)
+    localStorage.removeItem(FOCUS_STORAGE_KEY)
+  } catch {
+    // 隐私模式下 localStorage 可能不可写，忽略即可；下次加载会按 session 状态兜底
+  }
 }
