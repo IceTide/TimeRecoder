@@ -29,6 +29,11 @@
     "dev:electron": "wait-on http://localhost:5173 && node scripts/start-electron.cjs",
     "build": "npm run typecheck && vite build && tsc -p tsconfig.electron.json",
     "start": "node scripts/start-electron.cjs",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty false && tsc -p tsconfig.node.json --noEmit --pretty false && tsc -p tsconfig.electron.json --noEmit --pretty false"
   },
   "dependencies": {
@@ -49,6 +54,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "^33.2.0",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "wait-on": "^8.0.1"
@@ -56,5 +62,40 @@
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.25.12": true
+  },
+  "build": {
+    "appId": "com.timerecoder.desktop",
+    "productName": "TimeRecoder",
+    "copyright": "Copyright 2026 Liu Yisong",
+    "electronDist": "node_modules/electron/dist",
+    "icon": "build/icon",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   }
 }

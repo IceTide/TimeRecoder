@@ -81,7 +81,19 @@ npm run build
 
 # 启动已构建的应用
 npm start
+
+# 生成安装包（NSIS + 便携版，输出到 release/）
+npm run dist:win
+
+# 仅生成未打包目录，便于快速验证
+npm run dist:dir
+
+# macOS / Linux
+npm run dist:mac
+npm run dist:linux
 ```
+
+> 未配置代码签名证书时安装包会跳过签名；Windows 首次运行可能触发 SmartScreen 提示，选择「更多信息 → 仍要运行」即可。安装包使用项目自带的 `build/icon` 图标。
 
 ## 使用说明
 
