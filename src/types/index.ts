@@ -36,6 +36,10 @@ export interface TimeEntry {
   source: TimeSource
   note?: string
   createdAt: number
+  /** 自动追踪记录的来源进程名（可选，旧数据无此字段） */
+  sourceApp?: string
+  /** 自动追踪记录的来源窗口标题（可选，旧数据无此字段） */
+  sourceTitle?: string
 }
 
 export interface FocusSession {
@@ -81,6 +85,8 @@ export interface ClassifyRule {
   enabled: boolean
   /** 匹配范围：app=仅进程名 / title=仅窗口标题 / both=两者（默认 both） */
   scope?: 'app' | 'title' | 'both'
+  /** 是否来自本地学习建议（仅用于界面标识，不影响匹配逻辑） */
+  learned?: boolean
 }
 
 declare global {

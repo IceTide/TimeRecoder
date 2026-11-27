@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Download, Upload, Info, Save, Activity, Plus, Trash2, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Download, Upload, Info, Save, Activity, Plus, Trash2, ShieldCheck, Sparkles } from 'lucide-react'
 import { getSetting, setSetting, exportBackup, importBackup, validateBackup } from '../db/database'
 import { useStore } from '../store/useStore'
 import { makeRuleId } from '../utils/classify'
+import { learnedRuleKey, learnRules } from '../utils/smartClassify'
+import EmptyState from '../components/EmptyState'
 import {
   DEFAULT_BLOCK_RULES, DEFAULT_GUARD_INTERVAL_SEC, blockRuleKey, sanitizeBlockRules,
   type BlockRule,
@@ -18,6 +20,7 @@ export default function SettingsPage({ onToast }: Props) {
   const {
     loadAll, autoEnabled, autoIntervalSec, autoMinSec, autoRules, autoCurrent,
     setAutoEnabled, setAutoIntervalSec, setAutoMinSec, setAutoRules,
+    classifyCorrections, dismissedRuleKeys, adoptLearnedRule, dismissLearnedRule,
   } = useStore()
   const [presets, setPresets] = useState<number[]>([25, 50, 90])
   const [breakMin, setBreakMin] = useState(45)
@@ -49,6 +52,19 @@ export default function SettingsPage({ onToast }: Props) {
   }, [])
 
   useEffect(() => { setDraftRules(autoRules) }, [autoRules])
+
+  // 本地学习：只在数据/规则变化时计算，不进入渲染热路径
+  const suggestions = useMemo(() => {
+    const handled = new Set(dismissedRuleKeys)
+    return learnRules(classifyCorrections).filter((rule) => {
+      if (handled.has(learnedRuleKey(rule.keyword, rule.scope))) return false
+      // 已有同关键词同范围的规则时不重复建议（即使类别不同，交由用户自行调整）
+      return !autoRules.some((existing) => {
+        const scope = existing.scope ?? 'both'
+        return scope === rule.scope && existing.keyword.trim().toLowerCase() === rule.keyword.toLowerCase()
+      })
+    })
+  }, [classifyCorrections, dismissedRuleKeys, autoRules])
 
   const save = async () => {
     const valid = presets.map((n) => Number(n)).filter((n) => n > 0 && n <= 240)
@@ -193,6 +209,7 @@ export default function SettingsPage({ onToast }: Props) {
               <select className="select" value={r.category} onChange={(e) => patchRule(r.id, { category: e.target.value as TimeCategory })}>
                 {CATS.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
               </select>
+              {r.learned && <span className="learned-badge" title="来自本地学习建议">已学习</span>}
               <button className="icon-btn" title="删除规则" onClick={() => removeRule(r.id)}><Trash2 size={15} /></button>
             </div>
           ))}
@@ -206,6 +223,51 @@ export default function SettingsPage({ onToast }: Props) {
           </select>
           <button className="btn sm" onClick={addRule}><Plus size={14} style={{ marginRight: 4 }} />添加</button>
         </div>
+      </div>
+
+      <div className="card card-pad" style={{ marginBottom: 20 }}>
+        <div className="smart-head">
+          <div>
+            <div className="smart-head-title"><Sparkles size={16} /> 智能归类建议</div>
+            <div className="card-sub" style={{ marginTop: 4 }}>
+              纯本地学习你的修正习惯，不联网、不调用外部 AI；采纳后才会生效
+            </div>
+          </div>
+          <span className="smart-count">已记录 {classifyCorrections.length} 次修正</span>
+        </div>
+        {suggestions.length === 0 ? (
+          <EmptyState
+            icon={Sparkles}
+            title="还没有足够的学习样本"
+            hint="在时间统计里手动修改自动记录的分类，系统会学习你的习惯；同一偏好修正 2 次后会出现建议"
+          />
+        ) : (
+          <div className="smart-list">
+            {suggestions.map((rule) => (
+              <div className="smart-item" key={learnedRuleKey(rule.keyword, rule.scope)}>
+                <div className="smart-item-main">
+                  <div className="smart-kw">
+                    {rule.keyword}
+                    <span className="smart-scope">
+                      {rule.scope === 'app' ? '进程名' : rule.scope === 'title' ? '窗口标题' : '两者'}
+                    </span>
+                  </div>
+                  <div className="smart-meta">
+                    建议归入 <b>{CATEGORY_LABEL[rule.category]}</b> · 命中 {rule.hits} 次 · 置信度{' '}
+                    <span className="smart-confidence">{Math.round(rule.confidence * 100)}%</span>
+                  </div>
+                  {rule.sampleTitle && (
+                    <div className="smart-sample" title={rule.sampleTitle}>样例：{rule.sampleTitle}</div>
+                  )}
+                </div>
+                <div className="smart-actions">
+                  <button className="btn sm" onClick={async () => { await adoptLearnedRule(rule); onToast('已采纳，规则优先生效') }}>采纳</button>
+                  <button className="btn ghost sm" onClick={async () => { await dismissLearnedRule(rule); onToast('已忽略这条建议') }}>忽略</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -303,8 +365,8 @@ export default function SettingsPage({ onToast }: Props) {
         <div style={{ fontSize: 13, color: 'var(--text-sub)', lineHeight: 1.9, marginTop: 10 }}>
           <div><strong>TimeRecoder</strong> v{version || '0.1.0'}</div>
           <div>技术栈：Electron + React + TypeScript + Dexie + Recharts</div>
-          <div>功能：专注模式、日程安排、待办任务、时间统计、自动活动追踪、数据备份</div>
-          <div style={{ color: 'var(--text-faint)', marginTop: 8 }}>后续规划：AI 智能归类、系统托盘与全局快捷键、跨设备同步</div>
+          <div>功能：专注模式、日程安排、待办任务、时间统计、自动活动追踪、本地智能归类、数据备份</div>
+          <div style={{ color: 'var(--text-faint)', marginTop: 8 }}>后续规划：系统托盘与全局快捷键、跨设备同步</div>
         </div>
       </div>
     </div>

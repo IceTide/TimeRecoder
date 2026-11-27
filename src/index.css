@@ -569,6 +569,55 @@ select option { background: var(--surface-2); color: var(--text); }
 .rule-add .input { flex: 1; }
 .rule-add .select { width: 110px; flex-shrink: 0; }
 
+/* ---------- 智能归类建议：本地学习，低饱和冷光、克制留白 ---------- */
+.smart-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  margin-bottom: 16px;
+}
+.smart-head-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-base); font-weight: 500; letter-spacing: -.1px;
+}
+.smart-head-title svg { color: var(--accent); }
+.smart-count {
+  flex-shrink: 0; font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--text-faint); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill); padding: 4px 10px;
+}
+.smart-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 340px; overflow-y: auto; padding-right: 4px;
+}
+.smart-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--border-soft);
+  border-radius: var(--radius); background: var(--accent-wash);
+  transition: border-color .18s ease-out, background .18s ease-out;
+}
+.smart-item:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.smart-item-main { min-width: 0; }
+.smart-kw {
+  font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.smart-scope {
+  font-family: var(--font-sans); font-size: 10px; color: var(--text-mute);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 1px 7px;
+}
+.smart-meta { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-sub); }
+.smart-meta b { color: var(--text); font-weight: 500; }
+.smart-confidence { font-family: var(--font-mono); color: var(--accent-dim); }
+.smart-sample {
+  margin-top: 4px; font-size: 11px; color: var(--text-mute);
+  max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.smart-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.learned-badge {
+  flex-shrink: 0; white-space: nowrap; font-size: 10px; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  border-radius: var(--radius-pill); padding: 2px 7px;
+}
+
 /* ---------- 顶栏实时时钟 ---------- */
 .clock-tag {
   display: flex; align-items: baseline; gap: 1px;

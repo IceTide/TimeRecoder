@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import * as repo from '../db/database'
-import { classifyWindow, DEFAULT_AUTO_RULES } from '../utils/classify'
+import { classifyWindow, DEFAULT_AUTO_RULES, makeRuleId } from '../utils/classify'
+import {
+  CORRECTIONS_MAX, isTimeCategory, learnedRuleKey, sanitizeCorrections, sanitizeDismissedKeys,
+  type ClassifyCorrection, type CorrectionInput, type LearnedRule,
+} from '../utils/smartClassify'
 import type {
   CalendarEvent,
   ClassifyRule,
@@ -104,6 +108,10 @@ interface State {
   autoRules: ClassifyRule[]
   autoCurrent: AutoSegment | null
 
+  // 本地智能归类（从手动修正中学习，零联网）
+  classifyCorrections: ClassifyCorrection[]
+  dismissedRuleKeys: string[]
+
   loadAll: () => Promise<void>
   addProject: (p: Project) => Promise<number>
   updateProject: (id: number, c: Partial<Project>) => Promise<void>
@@ -134,6 +142,13 @@ interface State {
   flushAuto: () => Promise<void>
   /** 退出前结算：停止后续采集并落库当前段 */
   prepareShutdown: () => Promise<void>
+
+  /** 记录一次「自动记录被手动改分类」，供本地学习使用 */
+  recordCorrection: (input: CorrectionInput) => Promise<void>
+  /** 采纳一条学习建议：插入规则列表最前并标记为已学习 */
+  adoptLearnedRule: (rule: LearnedRule) => Promise<void>
+  /** 忽略一条学习建议：之后不再重复建议 */
+  dismissLearnedRule: (rule: LearnedRule) => Promise<void>
 }
 
 function toFocusState(p: PersistedFocus): FocusState {
@@ -154,14 +169,21 @@ export const useStore = create<State>((set, get) => ({
   autoMinSec: 60,
   autoRules: DEFAULT_AUTO_RULES,
   autoCurrent: null,
+  classifyCorrections: [],
+  dismissedRuleKeys: [],
 
   loadAll: async () => {
-    const [projects, tasks, entries, sessions, events, autoEnabled, autoIntervalSec, autoMinSec, autoRules] = await Promise.all([
+    const [
+      projects, tasks, entries, sessions, events, autoEnabled, autoIntervalSec, autoMinSec, autoRules,
+      correctionsRaw, dismissedRaw,
+    ] = await Promise.all([
       repo.getProjects(), repo.getTasks(), repo.getEntries(), repo.getSessions(), repo.getEvents(),
       repo.getSetting<boolean>('autoEnabled', false),
       repo.getSetting<number>('autoIntervalSec', 60),
       repo.getSetting<number>('autoMinSec', 60),
       repo.getSetting<ClassifyRule[]>('autoRules', DEFAULT_AUTO_RULES),
+      repo.getSetting<unknown>('classifyCorrections', []),
+      repo.getSetting<unknown>('classifyLearnedDismissed', []),
     ])
     const pf = loadPersistedFocus()
     // 会话若已被删除则丢弃残留状态
@@ -172,6 +194,8 @@ export const useStore = create<State>((set, get) => ({
       autoEnabled, autoIntervalSec, autoMinSec,
       autoRules: Array.isArray(autoRules) && autoRules.length ? autoRules : DEFAULT_AUTO_RULES,
       autoCurrent: loadPersistedAuto(),
+      classifyCorrections: sanitizeCorrections(correctionsRaw),
+      dismissedRuleKeys: sanitizeDismissedKeys(dismissedRaw),
       loaded: true,
     })
   },
@@ -352,6 +376,9 @@ export const useStore = create<State>((set, get) => ({
         source: 'auto',
         note: `${seg.app} · ${seg.title}`.slice(0, 120),
         createdAt: endAt,
+        // 可选字段：让后续手动修正能被用于本地学习（旧数据无此字段，兼容）
+        sourceApp: seg.app.slice(0, 200),
+        sourceTitle: seg.title.slice(0, 200),
       })
       set({ entries: await repo.getEntries() })
     }
@@ -361,6 +388,59 @@ export const useStore = create<State>((set, get) => ({
     // 标记退出中，阻止在途 pollAuto 再开新段
     shuttingDown = true
     if (get().autoCurrent) await get().flushAuto()
+  },
+
+  recordCorrection: async (input) => {
+    const { fromCategory, toCategory } = input
+    if (!isTimeCategory(fromCategory) || !isTimeCategory(toCategory)) return
+    if (fromCategory === toCategory) return
+
+    const app = typeof input.sourceApp === 'string' ? input.sourceApp.trim().slice(0, 200) : ''
+    let title = typeof input.sourceTitle === 'string' ? input.sourceTitle.trim().slice(0, 200) : ''
+    // 兼容旧数据：没有 sourceTitle 时，从自动记录的 note（"app · title"）里还原
+    if (!title && typeof input.note === 'string') {
+      const parts = input.note.split('·').map((part) => part.trim())
+      if (parts.length > 1) title = parts.slice(1).join(' · ').slice(0, 200)
+    }
+    if (!app && !title) return
+
+    const at = typeof input.at === 'number' && Number.isFinite(input.at) ? input.at : Date.now()
+    const correction: ClassifyCorrection = {
+      app, title, fromCategory, toCategory, at,
+    }
+    const next = [...get().classifyCorrections, correction].slice(-CORRECTIONS_MAX)
+    await repo.setSetting('classifyCorrections', next)
+    set({ classifyCorrections: next })
+  },
+
+  adoptLearnedRule: async (rule) => {
+    const key = learnedRuleKey(rule.keyword, rule.scope)
+    const alreadyExists = get().autoRules.some((r) =>
+      r.enabled && r.category === rule.category && learnedRuleKey(r.keyword, r.scope) === key,
+    )
+    if (!alreadyExists) {
+      // 采纳的规则放在列表最前：classifyWindow 顺序匹配，学习结果优先生效
+      const learned: ClassifyRule = {
+        id: makeRuleId(),
+        keyword: rule.keyword,
+        category: rule.category,
+        enabled: true,
+        scope: rule.scope,
+        learned: true,
+      }
+      await get().setAutoRules([learned, ...get().autoRules])
+    }
+    // 已处理（采纳/忽略共用一个列表）：历史修正仍在，但不再重复建议
+    const nextKeys = sanitizeDismissedKeys([...get().dismissedRuleKeys, key])
+    await repo.setSetting('classifyLearnedDismissed', nextKeys)
+    set({ dismissedRuleKeys: nextKeys })
+  },
+
+  dismissLearnedRule: async (rule) => {
+    const key = learnedRuleKey(rule.keyword, rule.scope)
+    const nextKeys = sanitizeDismissedKeys([...get().dismissedRuleKeys, key])
+    await repo.setSetting('classifyLearnedDismissed', nextKeys)
+    set({ dismissedRuleKeys: nextKeys })
   },
 
   pollAuto: async () => {

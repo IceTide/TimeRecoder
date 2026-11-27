@@ -41,7 +41,7 @@ const emptyEntry = (): TimeEntry => {
 }
 
 export default function StatsPage() {
-  const { entries, tasks, projects, addEntry, updateEntry, deleteEntry } = useStore()
+  const { entries, tasks, projects, addEntry, updateEntry, deleteEntry, recordCorrection } = useStore()
   const [range, setRange] = useState<Range>('today')
   const [editing, setEditing] = useState<TimeEntry | null>(null)
 
@@ -155,8 +155,20 @@ export default function StatsPage() {
     if (!editing || editing.endAt <= editing.startAt) return // 无效时间段不入库，弹窗内已有红字提示
     const durationSec = Math.max(0, Math.round((editing.endAt - editing.startAt) / 1000))
     const payload = { ...editing, durationSec }
-    if (editing.id) await updateEntry(editing.id, payload)
-    else await addEntry({ ...payload, createdAt: Date.now() })
+    if (editing.id) {
+      // 自动记录被手动改分类 → 写入本地修正日志，供「智能归类建议」学习
+      const before = entries.find((e) => e.id === editing.id)
+      if (before && before.source === 'auto' && before.category !== editing.category) {
+        await recordCorrection({
+          sourceApp: before.sourceApp,
+          sourceTitle: before.sourceTitle,
+          note: before.note,
+          fromCategory: before.category,
+          toCategory: editing.category,
+        })
+      }
+      await updateEntry(editing.id, payload)
+    } else await addEntry({ ...payload, createdAt: Date.now() })
     setEditing(null)
   }
 
