@@ -5,6 +5,7 @@ import {
   DEFAULT_BLOCK_RULES, DEFAULT_GUARD_INTERVAL_SEC, matchBlocked, sanitizeBlockRules,
   type BlockRule,
 } from '../utils/focusGuard'
+import { isSelfWindow } from '../utils/classify'
 
 interface GuardState {
   /** 本次专注累计打断次数 */
@@ -74,6 +75,7 @@ export function useFocusGuard(onHit: (keyword: string) => void) {
         let info: { app: string; title: string } = { app: '', title: '' }
         try { info = JSON.parse(raw) as { app: string; title: string } } catch { return }
 
+        if (isSelfWindow(info.app, info.title)) return
         const hit = matchBlocked(info.app, info.title, activeRules)
         if (!hit) return
 

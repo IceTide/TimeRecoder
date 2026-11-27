@@ -97,6 +97,9 @@ const BYDAY_MAP: Record<string, number> = {
   MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0,
 }
 
+/** ICS 的 SU=0 对应 JS getDay() 的周日；周一为一周起点时需要特别映射。 */
+const mondayBasedIndex = (jsDay: number) => (jsDay === 0 ? 6 : jsDay - 1)
+
 /** 只展开常见的 daily/weekly/monthly 规则；不支持的规则保留首条occurrence，避免误导入。 */
 function expandRecurrence(startAt: number, endAt: number, rule?: string): [number, number][] {
   const duration = Math.max(60_000, endAt - startAt)
@@ -129,7 +132,7 @@ function expandRecurrence(startAt: number, endAt: number, rule?: string): [numbe
       const week = addDays(weekStart, w * interval * 7).getTime()
       const days = byDays.length ? byDays : [new Date(startAt).getDay()]
       for (const day of days) {
-        const target = addDays(week, (day - 1 + 7) % 7)
+        const target = addDays(week, mondayBasedIndex(day))
         const s = new Date(target).setHours(new Date(startAt).getHours(), new Date(startAt).getMinutes(), 0, 0)
         if (s < startAt || s > limit) continue
         result.push([s, s + duration])
@@ -166,6 +169,7 @@ function formatICalDate(timestamp: number): string {
 /** 导出为可被 Google Calendar / Outlook 直接导入的 .ics 文本 */
 export function eventsToIcs(events: CalendarEvent[]): string {
   const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -173,14 +177,15 @@ export function eventsToIcs(events: CalendarEvent[]): string {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'X-WR-CALNAME:TimeRecoder 日程',
+    `X-WR-TIMEZONE:${tz}`,
   ]
   for (const e of events) {
     lines.push(
       'BEGIN:VEVENT',
       `UID:timerecoder-${e.id ?? `${e.startAt}-${e.title.length}`}@local`,
       `DTSTAMP:${now}`,
-      `DTSTART:${formatICalDate(e.startAt)}`,
-      `DTEND:${formatICalDate(e.endAt)}`,
+      `DTSTART;TZID=${tz}:${formatICalDate(e.startAt)}`,
+      `DTEND;TZID=${tz}:${formatICalDate(e.endAt)}`,
       `SUMMARY:${escapeIcs(e.title)}`,
     )
     if (e.note) lines.push(`DESCRIPTION:${escapeIcs(e.note)}`)

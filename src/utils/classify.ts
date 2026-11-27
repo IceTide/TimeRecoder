@@ -75,6 +75,17 @@ export function classifyWindow(
   return FALLBACK_CATEGORY
 }
 
+/**
+ * 判断前台窗口是否为 TimeRecoder 自身。
+ * 开发态进程名是 electron，不能简单按 electron 过滤，否则 Slack/Teams 等 Electron 应用会被误跳过。
+ */
+export function isSelfWindow(app: string, title: string): boolean {
+  const a = (app || '').toLowerCase()
+  const t = (title || '').toLowerCase()
+  if (a.includes('timerecoder')) return true
+  return a.includes('electron') && (t.includes('timerecoder') || t.includes('时间控制台'))
+}
+
 /** 生成一条规则的唯一 id */
 export function makeRuleId(): string {
   return `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`

@@ -78,9 +78,23 @@ export default function TodoPage({ onToast }: Props) {
 
   const saveTask = async () => {
     if (!editing || !editing.title.trim()) return
-    const { task } = applyParsedFields(editing, editing.title)
-    if (editing.id) await updateTask(editing.id, task)
-    else await addTask({ ...task, createdAt: Date.now() })
+    const { task: parsed } = applyParsedFields(editing, editing.title)
+    const task: Task = {
+      ...parsed,
+      subtasks: (parsed.subtasks ?? []).filter((s) => s.title.trim()),
+    }
+    if (editing.id) {
+      const previous = tasks.find((t) => t.id === editing.id)
+      if (task.status === 'done' && previous?.status !== 'done') {
+        // 先保存本次编辑（含截止日期等），再按最新配置生成下一次重复实例
+        await updateTask(editing.id, { ...task, status: previous?.status ?? 'todo' })
+        await completeTask(editing.id)
+      } else {
+        await updateTask(editing.id, task)
+      }
+    } else {
+      await addTask({ ...task, createdAt: Date.now() })
+    }
     setEditing(null)
     setParseNotice('')
     onToast(editing.id ? '任务已更新' : '任务已创建')

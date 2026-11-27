@@ -36,14 +36,26 @@ function takeMatch(text: string, pattern: RegExp): { matched: string; groups: st
 export function parseTaskInput(raw: string, now = Date.now()): ParsedTaskInput {
   let rest = raw.trim()
   const result: ParsedTaskInput = { title: '', tags: [] }
+  let dueDate: number | undefined
   if (!rest) return result
 
-  // 重复规则先取，避免「每周五」里的「五」干扰日期解析
+  // 「每周五」既表示重复规则，也隐含了首次截止日，必须整体消费，不能只删「每周」
+  const weeklyDayHit = takeMatch(rest, /每周([一二三四五六日天])|每星期([一二三四五六日天])/)
+  if (weeklyDayHit) {
+    const key = weeklyDayHit.groups.find(Boolean)!
+    const current = new Date(now).getDay()
+    const delta = (WEEKDAYS[key] - current + 7) % 7 || 7
+    result.recurrence = 'weekly'
+    dueDate = addDays(startOfDay(now), delta).getTime()
+    rest = rest.replace(weeklyDayHit.matched, ' ')
+  }
+
+  // 其他重复规则
   const recurrencePatterns: { re: RegExp; value: Recurrence }[] = [
     { re: /工作日|每周一至周五|weekdays/i, value: 'weekdays' },
     { re: /每天|每日|daily/i, value: 'daily' },
     { re: /每月|monthly/i, value: 'monthly' },
-    { re: /每周|每星期|每周\d|每周[一二三四五六日天]|weekly/i, value: 'weekly' },
+    { re: /每周|每星期|weekly/i, value: 'weekly' },
     { re: /不重复|单次|none/i, value: 'none' },
   ]
   for (const { re, value } of recurrencePatterns) {
@@ -128,7 +140,6 @@ export function parseTaskInput(raw: string, now = Date.now()): ParsedTaskInput {
     },
   ]
 
-  let dueDate: number | undefined
   for (const rule of dateRules) {
     const hit = takeMatch(rest, rule.re)
     if (!hit) continue

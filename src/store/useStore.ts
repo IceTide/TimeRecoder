@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as repo from '../db/database'
-import { classifyWindow, DEFAULT_AUTO_RULES, makeRuleId } from '../utils/classify'
+import { classifyWindow, DEFAULT_AUTO_RULES, isSelfWindow, makeRuleId } from '../utils/classify'
 import {
   CORRECTIONS_MAX, isTimeCategory, learnedRuleKey, sanitizeCorrections, sanitizeDismissedKeys,
   type ClassifyCorrection, type CorrectionInput, type LearnedRule,
@@ -315,9 +315,11 @@ export const useStore = create<State>((set, get) => ({
       const plannedSec = f.plannedMin * 60
       const isCompleted = status === 'completed'
       const bookedSec = isCompleted && elapsedSec > plannedSec ? plannedSec : elapsedSec
-      // 结束时刻：completed 时用计划结束点修正墙钟时间，让时间轴与时长吻合
-      const endAt = isCompleted && elapsedSec > plannedSec
-        ? f.startAt + plannedSec * 1000
+      // completed 时把到点检测延迟产生的溢出量从墙钟结束时刻回退；
+      // 不能简单用 startAt + plannedSec，否则中途暂停过的会话会被错误前移到暂停之前。
+      const overtimeSec = isCompleted ? Math.max(0, elapsedSec - plannedSec) : 0
+      const endAt = overtimeSec > 0
+        ? Math.max(f.startAt + Math.round(bookedSec * 1000), wallEndAt - Math.round(overtimeSec * 1000))
         : wallEndAt
 
       // 先同步清空前端状态，避免 1 秒 tick 或 UI 再读到进行中的会话
@@ -505,8 +507,7 @@ export const useStore = create<State>((set, get) => ({
       const title = (info.title || '').trim()
 
       // 锁屏 / 无前台窗口 / 本机自身应用：结算当前段后跳过
-      const isSelf = /timerecoder|electron/i.test(app)
-      if ((!app && !title) || isSelf) {
+      if ((!app && !title) || isSelfWindow(app, title)) {
         if (get().autoCurrent) await get().flushAuto()
         return
       }
