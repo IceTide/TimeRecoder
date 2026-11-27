@@ -24,20 +24,28 @@ const emptyTask = (): Task => ({
 export default function TodoPage({ onToast }: Props) {
   const { tasks, projects, entries, addTask, updateTask, deleteTask, completeTask, startFocus, focus } = useStore()
   const [filter, setFilter] = useState<TaskStatus | 'all'>('all')
+  const [projectFilter, setProjectFilter] = useState<number | 'all' | 'none'>('all')
+  const [tagFilter, setTagFilter] = useState('')
   const [query, setQuery] = useState('')
   const [quick, setQuick] = useState('')
   const [editing, setEditing] = useState<Task | null>(null)
   const [parseNotice, setParseNotice] = useState('')
+  const [newTag, setNewTag] = useState('')
+
+  const allTags = useMemo(() =>
+    Array.from(new Set(tasks.flatMap((t) => t.tags ?? []))).sort(), [tasks])
 
   const filtered = useMemo(() => tasks
     .filter((t) => filter === 'all' || t.status === filter)
     .filter((t) => !query || t.title.toLowerCase().includes(query.toLowerCase()))
+    .filter((t) => projectFilter === 'all' || (projectFilter === 'none' ? !t.projectId : t.projectId === projectFilter))
+    .filter((t) => !tagFilter || (t.tags ?? []).includes(tagFilter))
     .sort((a, b) => {
       const rank = { high: 0, medium: 1, low: 2 }
       if (a.status === 'done' && b.status !== 'done') return 1
       if (b.status === 'done' && a.status !== 'done') return -1
       return rank[a.priority] - rank[b.priority] || b.createdAt - a.createdAt
-    }), [tasks, filter, query])
+    }), [tasks, filter, query, projectFilter, tagFilter])
 
   const taskTime = (id?: number) => entries.filter((e) => e.taskId === id).reduce((s, e) => s + e.durationSec, 0)
 
@@ -117,6 +125,26 @@ export default function TodoPage({ onToast }: Props) {
     setEditing((prev) => prev ? { ...prev, subtasks: mutate([...(prev.subtasks ?? [])]) } : prev)
   }
 
+  const addTag = (raw: string) => {
+    const tag = raw.trim().replace(/^#/, '').trim()
+    if (!tag || !editing) return
+    if (!(editing.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      setEditing({ ...editing, tags: [...(editing.tags ?? []), tag] })
+    }
+    setNewTag('')
+  }
+
+  const toggleTag = (tag: string) => {
+    if (!editing) return
+    const exists = (editing.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
+    setEditing({
+      ...editing,
+      tags: exists
+        ? (editing.tags ?? []).filter((t) => t.toLowerCase() !== tag.toLowerCase())
+        : [...(editing.tags ?? []), tag],
+    })
+  }
+
   const beginFocus = async (t: Task) => {
     if (focus) { onToast('已有专注进行中'); return }
     await startFocus(25, t.id)
@@ -131,7 +159,7 @@ export default function TodoPage({ onToast }: Props) {
           <div className="page-title">待办任务</div>
           <div className="page-desc">先决定做什么，再谈效率 · 共 {tasks.filter(t => t.status !== 'done').length} 项未完成</div>
         </div>
-        <button className="btn" onClick={() => { setEditing(emptyTask()); setParseNotice('') }}><Plus size={16} style={{ marginRight: 6 }} />新建任务</button>
+        <button className="btn" onClick={() => { setEditing(emptyTask()); setParseNotice(''); setNewTag('') }}><Plus size={16} style={{ marginRight: 6 }} />新建任务</button>
       </div>
 
       <div className="todo-toolbar">
@@ -141,6 +169,19 @@ export default function TodoPage({ onToast }: Props) {
           ))}
         </div>
         <div style={{ flex: 1 }} />
+        <select className="select" style={{ width: 130 }} value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value === 'all' ? 'all' : e.target.value === 'none' ? 'none' : Number(e.target.value))}>
+          <option value="all">全部项目</option>
+          <option value="none">未分类</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select className="select" style={{ width: 120 }} value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+          <option value="">全部标签</option>
+          {allTags.map((tag) => <option key={tag} value={tag}>#{tag}</option>)}
+        </select>
+        {(projectFilter !== 'all' || tagFilter) && (
+          <button className="btn ghost sm" onClick={() => { setProjectFilter('all'); setTagFilter('') }}>重置筛选</button>
+        )}
         <div style={{ position: 'relative', width: 220 }}>
           <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-faint)' }} />
           <input className="input" style={{ paddingLeft: 32 }} placeholder="搜索任务…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -201,7 +242,7 @@ export default function TodoPage({ onToast }: Props) {
               </div>
               <div className="todo-actions">
                 {t.status !== 'done' && <button className="icon-btn" title="开始专注" onClick={() => beginFocus(t)}><Play size={16} /></button>}
-                <button className="icon-btn" title="编辑" onClick={() => { setEditing({ ...t, subtasks: [...(t.subtasks ?? [])] }); setParseNotice('') }}><Pencil size={16} /></button>
+                <button className="icon-btn" title="编辑" onClick={() => { setEditing({ ...t, subtasks: [...(t.subtasks ?? [])] }); setParseNotice(''); setNewTag('') }}><Pencil size={16} /></button>
                 <button className="icon-btn" title="删除" onClick={async () => { await deleteTask(t.id!); onToast('任务已删除') }}><Trash2 size={16} /></button>
               </div>
             </div>
@@ -264,6 +305,25 @@ export default function TodoPage({ onToast }: Props) {
           <div className="field" style={{ marginBottom: 14 }}>
             <label>截止日期</label>
             <input className="input" type="date" value={editing.dueDate ? fmtDate(editing.dueDate) : ''} onChange={(e) => setEditing({ ...editing, dueDate: e.target.value ? new Date(e.target.value).getTime() : undefined })} />
+          </div>
+
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label>标签 <span className="field-note">回车添加，点击标签可移除</span></label>
+            <div className="tag-editor">
+              {(editing.tags ?? []).map((tag) => (
+                <button key={tag} className="filter-chip active" title="点击移除" onClick={() => toggleTag(tag)}>#{tag} ×</button>
+              ))}
+              <input className="input" value={newTag} placeholder="输入标签后回车" onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(newTag) } }} />
+            </div>
+            {allTags.length > 0 && (
+              <div className="tag-suggestions">
+                <span>已有：</span>
+                {allTags.filter((t) => !(editing.tags ?? []).some((x) => x.toLowerCase() === t.toLowerCase()))
+                  .slice(0, 12)
+                  .map((tag) => <button key={tag} className="filter-chip" onClick={() => toggleTag(tag)}>#{tag}</button>)}
+              </div>
+            )}
           </div>
 
           <div className="field" style={{ marginBottom: 14 }}>
