@@ -38,7 +38,9 @@ export const addProject = (p: Project) => db.projects.add(p)
 export const updateProject = (id: number, changes: Partial<Project>) =>
   db.projects.update(id, changes)
 export const deleteProject = async (id: number) => {
+  // 任务和已记录的时间都要解绑，否则统计里仍留着指向已删除项目的引用
   await db.tasks.where('projectId').equals(id).modify({ projectId: undefined })
+  await db.timeEntries.where('projectId').equals(id).modify({ projectId: undefined })
   await db.projects.delete(id)
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Users, Sparkles, Settings2 } from 'lucide-react'
+import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Users, Sparkles, Settings2, Pencil, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { useStore } from './store/useStore'
@@ -60,7 +60,9 @@ export default function App() {
   const [projModal, setProjModal] = useState(false)
   const [projName, setProjName] = useState('')
   const [projColor, setProjColor] = useState(COLORS[0])
-  const { loadAll, loaded, projects, entries, addProject, focus, tickFocus, finishFocus,
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
+  const { loadAll, loaded, projects, entries, addProject, updateProject, deleteProject, focus, tickFocus, finishFocus,
     autoEnabled, autoIntervalSec, autoCurrent, pollAuto, flushAuto } = useStore()
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -163,6 +165,23 @@ export default function App() {
     setProjName(''); setProjModal(false); setToast('项目已创建')
   }
 
+  const saveProject = async () => {
+    if (!editingProject?.id || !editingProject.name.trim()) return
+    await updateProject(editingProject.id, {
+      name: editingProject.name.trim(),
+      color: editingProject.color,
+    })
+    setEditingProject(null)
+    setToast('项目已更新')
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!deletingProject?.id) return
+    await deleteProject(deletingProject.id)
+    setDeletingProject(null)
+    setToast('项目已删除，原有关联记录转为未分类')
+  }
+
   return (
     <div className={focus ? 'focus-mode' : ''}>
       <div className="app">
@@ -188,7 +207,9 @@ export default function App() {
             {projects.map((p) => (
               <div className="project-item" key={p.id}>
                 <span className="dot" style={{ background: p.color }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                <span className="project-name">{p.name}</span>
+                <button className="project-action" title="编辑项目" onClick={() => setEditingProject({ ...p })}><Pencil size={12} /></button>
+                <button className="project-action danger" title="删除项目" onClick={() => setDeletingProject(p)}><Trash2 size={12} /></button>
               </div>
             ))}
             <button className="side-add" onClick={() => setProjModal(true)}>+ 新建项目</button>
@@ -263,6 +284,47 @@ export default function App() {
           </div>
         </Modal>
       )}
+
+      {editingProject && (
+        <Modal title="编辑项目" onClose={() => setEditingProject(null)} footer={
+          <>
+            <button className="btn ghost" onClick={() => setEditingProject(null)}>取消</button>
+            <button className="btn" onClick={saveProject}>保存</button>
+          </>
+        }>
+          <div className="field" style={{ marginBottom: 16 }}>
+            <label>项目名称</label>
+            <input className="input" autoFocus value={editingProject.name}
+              onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>颜色</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {COLORS.map((c) => (
+                <button key={c} title="选择颜色" onClick={() => setEditingProject({ ...editingProject, color: c })}
+                  style={{ width: 28, height: 28, borderRadius: '50%', background: c,
+                    border: editingProject.color === c ? '2px solid #fff' : '2px solid transparent',
+                    boxShadow: editingProject.color === c ? '0 0 0 2px var(--accent-strong)' : '0 0 0 1px rgba(255,255,255,.1)' }} />
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {deletingProject && (
+        <Modal title="删除项目" onClose={() => setDeletingProject(null)} footer={
+          <>
+            <button className="btn ghost" onClick={() => setDeletingProject(null)}>取消</button>
+            <button className="btn danger" onClick={confirmDeleteProject}>确认删除</button>
+          </>
+        }>
+          <div style={{ fontSize: 13, color: 'var(--text-sub)', lineHeight: 1.8 }}>
+            确认删除项目「{deletingProject.name}」？<br/>
+            相关任务与时间记录会保留，但会转为「未分类」，不会删除原始记录。
+          </div>
+        </Modal>
+      )}
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   )

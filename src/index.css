@@ -176,6 +176,15 @@ select option { background: var(--surface-2); color: var(--text); }
   border-radius: 8px; font-size: var(--fs-sm); color: var(--text-sub);
 }
 .project-item:hover { background: var(--accent-wash); }
+.project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-action {
+  border: none; background: transparent; color: var(--text-faint); flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  opacity: 0; transition: opacity .18s ease-out, background .18s ease-out, color .18s ease-out;
+}
+.project-item:hover .project-action { opacity: 1; }
+.project-action:hover { background: var(--accent-soft); color: var(--accent); }
+.project-action.danger:hover { background: oklch(68% 0.10 20 / .12); color: var(--red); }
 .dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: var(--radius-pill); }
 .side-add {
   border: 1px solid var(--border-soft); background: transparent; color: var(--text-mute);
