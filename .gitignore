@@ -11,3 +11,5 @@ out/
 *.tsbuildinfo
 .workbuddy/
 .screenshots/
+
+.tmp-test/

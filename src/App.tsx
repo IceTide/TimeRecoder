@@ -3,6 +3,7 @@ import { Focus, CalendarDays, ListTodo, BarChart3, FileBarChart2, Users, Sparkle
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { useStore } from './store/useStore'
+import { useObsidianAutoWrite } from './hooks/useObsidianLog'
 import type { Project } from './types'
 import Modal from './components/Modal'
 import FocusPage from './pages/FocusPage'
@@ -62,6 +63,9 @@ export default function App() {
     autoEnabled, autoIntervalSec, autoCurrent, pollAuto, flushAuto } = useStore()
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // Obsidian 每日日志：全局自动调度（到点写入一次，切页不影响）
+  useObsidianAutoWrite()
 
   // 自动追踪：按设定间隔采集活动窗口；关闭/卸载时结算当前段
   useEffect(() => {

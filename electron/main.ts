@@ -1,5 +1,7 @@
-import { app, BrowserWindow, ipcMain, Notification, shell, Tray, Menu, globalShortcut, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification, shell, Tray, Menu, globalShortcut, nativeImage, dialog } from 'electron'
 import * as path from 'path'
+import * as fs from 'fs/promises'
+import { constants as fsConstants } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { makeTrayIconDataURL } from './tray-icon'
@@ -159,6 +161,42 @@ ipcMain.handle('notify', (_e, payload: { title: string; body: string }) => {
 })
 
 ipcMain.handle('app-version', () => app.getVersion())
+
+// ---------- Obsidian 每日日志：选择文件夹 / 写文件 / 检查路径 ----------
+ipcMain.handle('pick-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择 Obsidian 日志文件夹',
+  })
+  if (result.canceled || !result.filePaths.length) return null
+  return result.filePaths[0]
+})
+
+/** 仅允许写入 .md 文件，且目标必须在 baseDir 内（防路径穿越） */
+ipcMain.handle('write-daily-note', async (_e, payload: { baseDir: string; fileName: string; content: string }) => {
+  const { baseDir, fileName, content } = payload
+  if (!baseDir || !fileName || typeof content !== 'string') throw new Error('参数不完整')
+  if (!/^\d{4}-\d{2}-\d{2}\.md$/.test(fileName)) throw new Error('文件名必须是 YYYY-MM-DD.md')
+  const target = path.resolve(baseDir, fileName)
+  const root = path.resolve(baseDir)
+  if (target !== path.join(root, fileName) || !target.startsWith(root + path.sep)) {
+    throw new Error('非法路径')
+  }
+  await fs.mkdir(root, { recursive: true })
+  await fs.writeFile(target, content, 'utf8')
+  return target
+})
+
+/** 检查文件夹是否存在且可写（用于设置页状态提示） */
+ipcMain.handle('check-folder', async (_e, folder: string) => {
+  if (!folder) return { ok: false, reason: '未设置' }
+  try {
+    await fs.access(folder, fsConstants.W_OK)
+    return { ok: true, reason: '' }
+  } catch {
+    return { ok: false, reason: '文件夹不可写或不存在' }
+  }
+})
 
 // Phase 2：读取本机活动窗口信息（进程名 + 标题），用于自动时间追踪
 const ACTIVE_WINDOW_PS = `

@@ -98,6 +98,10 @@ declare global {
       isDev: () => Promise<boolean>
       activeWindowTitle: () => Promise<string>
       activeWindowInfo: () => Promise<string>
+      /** Obsidian 每日日志 */
+      pickFolder: () => Promise<string | null>
+      writeDailyNote: (baseDir: string, fileName: string, content: string) => Promise<string>
+      checkFolder: (folder: string) => Promise<{ ok: boolean; reason: string }>
       onAppAction: (handler: (action: string) => void) => () => void
       quitReady: () => void
     }

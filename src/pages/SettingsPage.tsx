@@ -5,6 +5,7 @@ import { useStore } from '../store/useStore'
 import { makeRuleId } from '../utils/classify'
 import { learnedRuleKey, learnRules } from '../utils/smartClassify'
 import EmptyState from '../components/EmptyState'
+import ObsidianSettings from '../components/ObsidianSettings'
 import {
   DEFAULT_BLOCK_RULES, DEFAULT_GUARD_INTERVAL_SEC, blockRuleKey, sanitizeBlockRules,
   type BlockRule,
@@ -343,6 +344,8 @@ export default function SettingsPage({ onToast }: Props) {
 
         <button className="btn" onClick={save}><Save size={15} style={{ marginRight: 6 }} />保存设置</button>
       </div>
+
+      <ObsidianSettings onToast={onToast} />
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         <div className="card-title">数据管理</div>
