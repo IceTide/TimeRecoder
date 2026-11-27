@@ -1,5 +1,12 @@
 export type Priority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'todo' | 'doing' | 'done'
+export type Recurrence = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly'
+
+export interface Subtask {
+  id: string
+  title: string
+  done: boolean
+}
 export type TimeCategory = 'focus' | 'meeting' | 'admin' | 'learning' | 'other'
 export type TimeSource = 'focus' | 'manual' | 'auto'
 export type FocusStatus = 'running' | 'completed' | 'aborted'
@@ -23,6 +30,12 @@ export interface Task {
   note?: string
   createdAt: number
   completedAt?: number
+  /** 子任务（旧数据无此字段） */
+  subtasks?: Subtask[]
+  /** 重复规则（旧数据无此字段） */
+  recurrence?: Recurrence
+  /** 同一重复序列的标识，便于后续按序列筛选（旧数据无此字段） */
+  seriesId?: string
 }
 
 export interface TimeEntry {

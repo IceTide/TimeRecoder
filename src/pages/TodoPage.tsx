@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Plus, Play, Pencil, Trash2, Search, Check, ListTodo } from 'lucide-react'
+import { Plus, Play, Pencil, Trash2, Search, Check, ListTodo, Sparkles, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import EmptyState from '../components/EmptyState'
-import type { Priority, Task, TaskStatus } from '../types'
+import type { Priority, Recurrence, Subtask, Task, TaskStatus } from '../types'
 import Modal from '../components/Modal'
 import { PRIORITY_LABEL, fmtDate } from '../utils/time'
+import { newSubtaskId, parseTaskInput, RECURRENCE_LABEL } from '../utils/taskInput'
 
 interface Props { onToast: (msg: string) => void }
 
@@ -16,14 +17,17 @@ const FILTERS: { key: TaskStatus | 'all'; label: string }[] = [
 ]
 
 const emptyTask = (): Task => ({
-  title: '', priority: 'medium', status: 'todo', tags: [], createdAt: Date.now(),
+  title: '', priority: 'medium', status: 'todo', tags: [],
+  subtasks: [], recurrence: 'none', createdAt: Date.now(),
 })
 
 export default function TodoPage({ onToast }: Props) {
-  const { tasks, projects, entries, addTask, updateTask, deleteTask, startFocus, focus } = useStore()
+  const { tasks, projects, entries, addTask, updateTask, deleteTask, completeTask, startFocus, focus } = useStore()
   const [filter, setFilter] = useState<TaskStatus | 'all'>('all')
   const [query, setQuery] = useState('')
+  const [quick, setQuick] = useState('')
   const [editing, setEditing] = useState<Task | null>(null)
+  const [parseNotice, setParseNotice] = useState('')
 
   const filtered = useMemo(() => tasks
     .filter((t) => filter === 'all' || t.status === filter)
@@ -37,18 +41,66 @@ export default function TodoPage({ onToast }: Props) {
 
   const taskTime = (id?: number) => entries.filter((e) => e.taskId === id).reduce((s, e) => s + e.durationSec, 0)
 
+  const solveProject = (name?: string) => {
+    if (!name) return undefined
+    const lower = name.toLowerCase()
+    return projects.find((p) => p.name.toLowerCase() === lower)
+      ?? projects.find((p) => p.name.toLowerCase().includes(lower))
+  }
+
+  const applyParsedFields = (base: Task, text: string): { task: Task; notice: string } => {
+    const parsed = parseTaskInput(text)
+    const task: Task = { ...base, title: parsed.title }
+    const notices: string[] = []
+    if (parsed.priority) { task.priority = parsed.priority; notices.push(PRIORITY_LABEL[parsed.priority]) }
+    if (parsed.estimatedMin) { task.estimatedMin = parsed.estimatedMin; notices.push(`${parsed.estimatedMin} 分钟`) }
+    if (parsed.dueDate) { task.dueDate = parsed.dueDate; notices.push(fmtDate(parsed.dueDate, 'M/d HH:mm')) }
+    const project = solveProject(parsed.projectName)
+    if (project?.id) { task.projectId = project.id; notices.push(project.name) }
+    if (parsed.tags.length) {
+      task.tags = Array.from(new Set([...(task.tags ?? []), ...parsed.tags]))
+      notices.push(parsed.tags.map((t) => `#${t}`).join(' '))
+    }
+    if (parsed.recurrence) {
+      task.recurrence = parsed.recurrence
+      notices.push(RECURRENCE_LABEL[parsed.recurrence])
+    }
+    return { task, notice: notices.join(' · ') }
+  }
+
+  const quickAdd = async () => {
+    const { task } = applyParsedFields(emptyTask(), quick)
+    if (!task.title.trim()) return
+    await addTask({ ...task, createdAt: Date.now() })
+    setQuick('')
+    onToast(`已添加「${task.title}」`)
+  }
+
   const saveTask = async () => {
     if (!editing || !editing.title.trim()) return
-    if (editing.id) await updateTask(editing.id, editing)
-    else await addTask({ ...editing, createdAt: Date.now() })
+    const { task } = applyParsedFields(editing, editing.title)
+    if (editing.id) await updateTask(editing.id, task)
+    else await addTask({ ...task, createdAt: Date.now() })
     setEditing(null)
+    setParseNotice('')
     onToast(editing.id ? '任务已更新' : '任务已创建')
   }
 
   const toggleDone = (t: Task) => {
     if (!t.id) return
-    const done = t.status === 'done'
-    updateTask(t.id, { status: done ? 'todo' : 'done', completedAt: done ? undefined : Date.now() })
+    if (t.status === 'done') updateTask(t.id, { status: 'todo', completedAt: undefined })
+    else completeTask(t.id)
+  }
+
+  const toggleSubtask = (t: Task, subtaskId: string) => {
+    if (!t.id || !t.subtasks) return
+    updateTask(t.id, {
+      subtasks: t.subtasks.map((s) => s.id === subtaskId ? { ...s, done: !s.done } : s),
+    })
+  }
+
+  const editSubtasks = (mutate: (list: Subtask[]) => Subtask[]) => {
+    setEditing((prev) => prev ? { ...prev, subtasks: mutate([...(prev.subtasks ?? [])]) } : prev)
   }
 
   const beginFocus = async (t: Task) => {
@@ -65,7 +117,7 @@ export default function TodoPage({ onToast }: Props) {
           <div className="page-title">待办任务</div>
           <div className="page-desc">先决定做什么，再谈效率 · 共 {tasks.filter(t => t.status !== 'done').length} 项未完成</div>
         </div>
-        <button className="btn" onClick={() => setEditing(emptyTask())}><Plus size={16} style={{ marginRight: 6 }} />新建任务</button>
+        <button className="btn" onClick={() => { setEditing(emptyTask()); setParseNotice('') }}><Plus size={16} style={{ marginRight: 6 }} />新建任务</button>
       </div>
 
       <div className="todo-toolbar">
@@ -81,16 +133,30 @@ export default function TodoPage({ onToast }: Props) {
         </div>
       </div>
 
+      <div className="quick-add-bar">
+        <Sparkles size={15} className="quick-add-icon" />
+        <input
+          className="input"
+          value={quick}
+          placeholder="快速添加：明天 15:00 评审 !高 @产品 #会议 预计60分 每周"
+          onChange={(e) => setQuick(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void quickAdd() }}
+        />
+        <button className="btn sm" onClick={() => void quickAdd()}>添加</button>
+        <span className="quick-add-hint">支持日期 / 时间 / !优先级 / @项目 / #标签 / 预计时长 / 重复</span>
+      </div>
+
       <div className="card">
         {filtered.length === 0 ? (
           <EmptyState
             icon={ListTodo}
             title={query ? '没有匹配的任务' : '还没有任务'}
-            hint={query ? '试试换个关键词，或清空搜索条件' : '点击右上角「新建任务」，把要做的事一一清单化'}
+            hint={query ? '试试换个关键词，或清空搜索条件' : '在上方输入一句话，或点击右上角「新建任务」'}
           />
         ) : filtered.map((t) => {
           const proj = projects.find((p) => p.id === t.projectId)
           const spent = taskTime(t.id)
+          const doneSubs = t.subtasks?.filter((s) => s.done).length ?? 0
           return (
             <div className={`todo-item ${t.status === 'done' ? 'done' : ''}`} key={t.id}>
               <button className={`todo-check ${t.status === 'done' ? 'done' : ''}`} onClick={() => toggleDone(t)}>
@@ -104,12 +170,24 @@ export default function TodoPage({ onToast }: Props) {
                   {t.estimatedMin && <span className="tag">预计 {t.estimatedMin} 分</span>}
                   {spent > 0 && <span className="tag">已投入 {Math.round(spent / 60)} 分</span>}
                   {t.dueDate && <span className="tag">截止 {fmtDate(t.dueDate, 'M/d')}</span>}
+                  {t.recurrence && t.recurrence !== 'none' && <span className="tag">{RECURRENCE_LABEL[t.recurrence]}</span>}
                   {t.tags.map((tag) => <span className="tag" key={tag}>#{tag}</span>)}
                 </div>
+                {!!t.subtasks?.length && (
+                  <div className="subtask-inline">
+                    {t.subtasks.map((s) => (
+                      <button key={s.id} className={`subtask-chip ${s.done ? 'done' : ''}`} onClick={() => toggleSubtask(t, s.id)} title="点击切换完成状态">
+                        <span className="subtask-box">{s.done && <Check size={10} />}</span>
+                        {s.title}
+                      </button>
+                    ))}
+                    <span className="subtask-count">{doneSubs}/{t.subtasks.length}</span>
+                  </div>
+                )}
               </div>
               <div className="todo-actions">
                 {t.status !== 'done' && <button className="icon-btn" title="开始专注" onClick={() => beginFocus(t)}><Play size={16} /></button>}
-                <button className="icon-btn" title="编辑" onClick={() => setEditing({ ...t })}><Pencil size={16} /></button>
+                <button className="icon-btn" title="编辑" onClick={() => { setEditing({ ...t, subtasks: [...(t.subtasks ?? [])] }); setParseNotice('') }}><Pencil size={16} /></button>
                 <button className="icon-btn" title="删除" onClick={async () => { await deleteTask(t.id!); onToast('任务已删除') }}><Trash2 size={16} /></button>
               </div>
             </div>
@@ -118,15 +196,23 @@ export default function TodoPage({ onToast }: Props) {
       </div>
 
       {editing && (
-        <Modal title={editing.id ? '编辑任务' : '新建任务'} onClose={() => setEditing(null)} footer={
+        <Modal title={editing.id ? '编辑任务' : '新建任务'} onClose={() => { setEditing(null); setParseNotice('') }} footer={
           <>
-            <button className="btn ghost" onClick={() => setEditing(null)}>取消</button>
+            <button className="btn ghost" onClick={() => { setEditing(null); setParseNotice('') }}>取消</button>
             <button className="btn" onClick={saveTask}>保存</button>
           </>
         }>
           <div className="field" style={{ marginBottom: 14 }}>
-            <label>任务标题 *</label>
-            <input className="input" autoFocus value={editing.title} placeholder="要做什么？" onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
+            <label>任务标题 * <span className="field-note">支持自然语言，点「解析」自动填表</span></label>
+            <div className="inline-field">
+              <input className="input" autoFocus value={editing.title} placeholder="例如：明天 15:00 评审 !高 @产品 #会议 预计60分 每周" onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
+              <button className="btn ghost sm" title="解析标题中的日期、优先级、项目等信息" onClick={() => {
+                const result = applyParsedFields(editing, editing.title)
+                setEditing(result.task)
+                setParseNotice(result.notice || '未识别到可解析的信息')
+              }}><Sparkles size={14} />解析</button>
+            </div>
+            {parseNotice && <div className="field-hint">已识别：{parseNotice}</div>}
           </div>
           <div className="row" style={{ marginBottom: 14 }}>
             <div className="field">
@@ -154,11 +240,34 @@ export default function TodoPage({ onToast }: Props) {
               <label>预计时长（分钟）</label>
               <input className="input" type="number" min="0" value={editing.estimatedMin ?? ''} onChange={(e) => setEditing({ ...editing, estimatedMin: e.target.value ? Number(e.target.value) : undefined })} />
             </div>
+            <div className="field">
+              <label>重复</label>
+              <select className="select" value={editing.recurrence ?? 'none'} onChange={(e) => setEditing({ ...editing, recurrence: e.target.value as Recurrence })}>
+                {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => <option key={r} value={r}>{RECURRENCE_LABEL[r]}</option>)}
+              </select>
+            </div>
           </div>
           <div className="field" style={{ marginBottom: 14 }}>
             <label>截止日期</label>
             <input className="input" type="date" value={editing.dueDate ? fmtDate(editing.dueDate) : ''} onChange={(e) => setEditing({ ...editing, dueDate: e.target.value ? new Date(e.target.value).getTime() : undefined })} />
           </div>
+
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label>子任务 <span className="field-note">{editing.subtasks?.filter((s) => s.done).length ?? 0}/{editing.subtasks?.length ?? 0} 已完成</span></label>
+            <div className="subtask-list">
+              {(editing.subtasks ?? []).map((s) => (
+                <div className="subtask-row" key={s.id}>
+                  <button className={`subtask-box ${s.done ? 'done' : ''}`} onClick={() => editSubtasks((list) => list.map((x) => x.id === s.id ? { ...x, done: !x.done } : x))}>
+                    {s.done && <Check size={11} />}
+                  </button>
+                  <input className="input" value={s.title} placeholder="子任务内容" onChange={(e) => editSubtasks((list) => list.map((x) => x.id === s.id ? { ...x, title: e.target.value } : x))} />
+                  <button className="icon-btn" title="删除子任务" onClick={() => editSubtasks((list) => list.filter((x) => x.id !== s.id))}><X size={14} /></button>
+                </div>
+              ))}
+              <button className="btn ghost sm" onClick={() => editSubtasks((list) => [...list, { id: newSubtaskId(), title: '', done: false }])}><Plus size={13} style={{ marginRight: 5 }} />添加子任务</button>
+            </div>
+          </div>
+
           <div className="field">
             <label>备注</label>
             <textarea className="textarea" value={editing.note ?? ''} placeholder="补充信息…" onChange={(e) => setEditing({ ...editing, note: e.target.value })} />

@@ -5,6 +5,7 @@ import {
   CORRECTIONS_MAX, isTimeCategory, learnedRuleKey, sanitizeCorrections, sanitizeDismissedKeys,
   type ClassifyCorrection, type CorrectionInput, type LearnedRule,
 } from '../utils/smartClassify'
+import { newSubtaskId, nextOccurrence } from '../utils/taskInput'
 import type {
   CalendarEvent,
   ClassifyRule,
@@ -118,11 +119,14 @@ interface State {
   deleteProject: (id: number) => Promise<void>
   addTask: (t: Task) => Promise<number>
   updateTask: (id: number, c: Partial<Task>) => Promise<void>
+  /** 完成任务；若配置了重复规则，自动生成下一次实例 */
+  completeTask: (id: number) => Promise<void>
   deleteTask: (id: number) => Promise<void>
   addEntry: (e: TimeEntry) => Promise<number>
   updateEntry: (id: number, c: Partial<TimeEntry>) => Promise<void>
   deleteEntry: (id: number) => Promise<void>
   addEvent: (e: CalendarEvent) => Promise<number>
+  addEvents: (events: CalendarEvent[]) => Promise<void>
   updateEvent: (id: number, c: Partial<CalendarEvent>) => Promise<void>
   deleteEvent: (id: number) => Promise<void>
 
@@ -214,6 +218,30 @@ export const useStore = create<State>((set, get) => ({
     return id as number
   },
   updateTask: async (id, c) => { await repo.updateTask(id, c); await get().loadAll() },
+
+  completeTask: async (id) => {
+    const task = get().tasks.find((t) => t.id === id)
+    if (!task || task.status === 'done') return
+    await repo.updateTask(id, { status: 'done', completedAt: Date.now() })
+
+    const recurrence = task.recurrence
+    if (recurrence && recurrence !== 'none') {
+      const template: Task = { ...task }
+      delete template.id
+      delete template.completedAt
+      const seriesId = task.seriesId ?? `series-${id}-${Date.now()}`
+      await repo.addTask({
+        ...template,
+        seriesId,
+        status: 'todo',
+        createdAt: Date.now(),
+        dueDate: nextOccurrence(task.dueDate ?? Date.now(), recurrence),
+        subtasks: task.subtasks?.map((s) => ({ ...s, id: newSubtaskId(), done: false })),
+      })
+    }
+    await get().loadAll()
+  },
+
   deleteTask: async (id) => { await repo.deleteTask(id); await get().loadAll() },
 
   addEntry: async (e) => {
@@ -228,6 +256,11 @@ export const useStore = create<State>((set, get) => ({
     const id = await repo.addEvent(e)
     await get().loadAll()
     return id as number
+  },
+  addEvents: async (events) => {
+    if (!events.length) return
+    await repo.addEvents(events)
+    await get().loadAll()
   },
   updateEvent: async (id, c) => { await repo.updateEvent(id, c); await get().loadAll() },
   deleteEvent: async (id) => { await repo.deleteEvent(id); await get().loadAll() },
@@ -314,15 +347,15 @@ export const useStore = create<State>((set, get) => ({
           createdAt: Date.now(),
         })
       }
-      // 只有真正完成整个番茄钟才自动把任务标记为完成
+      // 只有真正完成整个番茄钟才自动把任务标记为完成；重复任务会在此生成下一次实例
       if (isCompleted && task?.id && task.status !== 'done') {
-        await repo.updateTask(task.id, { status: 'done', completedAt: Date.now() })
+        await get().completeTask(task.id)
       }
 
-      const [sessions, entries, tasks] = await Promise.all([
-        repo.getSessions(), repo.getEntries(), repo.getTasks(),
+      const [sessions, entries] = await Promise.all([
+        repo.getSessions(), repo.getEntries(),
       ])
-      set({ sessions, entries, tasks })
+      set({ sessions, entries })
       return bookedSec
     } finally {
       finishing = false

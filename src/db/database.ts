@@ -67,6 +67,7 @@ export const updateSession = (id: number, changes: Partial<FocusSession>) =>
 // ---------- 日程 ----------
 export const getEvents = () => db.events.toArray()
 export const addEvent = (e: CalendarEvent) => db.events.add(e)
+export const addEvents = (events: CalendarEvent[]) => db.events.bulkAdd(events)
 export const updateEvent = (id: number, changes: Partial<CalendarEvent>) =>
   db.events.update(id, changes)
 export const deleteEvent = (id: number) => db.events.delete(id)
